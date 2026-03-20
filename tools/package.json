@@ -1,0 +1,12 @@
+{
+  "name": "glimpse-tools",
+  "version": "1.0.0",
+  "description": "CLI tools for processing Glimpse assets",
+  "scripts": {
+    "slice": "node depth_layer_slicer.js"
+  },
+  "dependencies": {
+    "minimist": "^1.2.8",
+    "sharp": "^0.34.0"
+  }
+}
