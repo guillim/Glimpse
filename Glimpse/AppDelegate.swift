@@ -50,9 +50,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupMenuBarItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "photo.on.rectangle", accessibilityDescription: "Glimpse")
+        if statusItem == nil {
+            statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+            if let button = statusItem?.button {
+                button.image = NSImage(systemSymbolName: "photo.on.rectangle", accessibilityDescription: "Glimpse")
+            }
         }
 
         let menu = NSMenu()
@@ -69,6 +71,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        themeSubmenu.addItem(NSMenuItem.separator())
+        let customItem = NSMenuItem(title: "Import Custom Model...", action: #selector(importCustomModel), keyEquivalent: "")
+        customItem.target = self
+        themeSubmenu.addItem(customItem)
+
         themeItem.submenu = themeSubmenu
         menu.addItem(themeItem)
 
@@ -81,6 +88,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func selectScene(_ sender: NSMenuItem) {
         desktopWindowController?.sceneViewController?.switchToScene(index: sender.tag)
+    }
+
+    @objc private func importCustomModel() {
+        let panel = NSOpenPanel()
+        panel.title = "Import 3D Model"
+        panel.allowedContentTypes = [
+            .init(filenameExtension: "usdz")!,
+            .init(filenameExtension: "obj")!,
+            .init(filenameExtension: "dae")!,
+            .init(filenameExtension: "scn")!,
+        ]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+
+        // Bring the app forward so the open panel is visible.
+        NSApp.activate(ignoringOtherApps: true)
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        guard let svc = desktopWindowController?.sceneViewController else { return }
+
+        do {
+            let newIndex = try svc.importCustomModel(from: url)
+            // Rebuild menu bar to include the new entry, then switch to it.
+            setupMenuBarItem()
+            svc.switchToScene(index: newIndex)
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Import Failed"
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
     }
 
     private func setupKeyboardShortcut() {

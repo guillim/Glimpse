@@ -22,6 +22,13 @@ final class SceneViewController: NSViewController {
     // Neutral camera position
     private let basePosition = SCNVector3(0, 0, 20)
 
+    // Render-side exponential smoothing — guarantees smooth frame-to-frame
+    // transitions regardless of tracking noise. Lower = smoother but laggier.
+    private let smoothingFactor: Float = 0.15
+    private var smoothedX: Float = 0
+    private var smoothedY: Float = 0
+    private var smoothedZ: Float = 1
+
     // Off-axis projection parameters.
     // The virtual screen sits at z = 0 — everything behind it (negative z) appears
     // "through the window."  screenHalfH is chosen so that at the default eye
@@ -44,6 +51,14 @@ final class SceneViewController: NSViewController {
     private(set) var availableScenes: [SceneEntry] = []
 
     private var currentIndex: Int = 0
+
+    /// Persistent directory for user-imported custom models.
+    static let customModelsDirectory: URL = {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("Glimpse/models", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
 
     // Holds only the active scene. Previous scene is released so its
     // decoded textures (~30-60 MB each) don't linger in RAM.
@@ -74,26 +89,80 @@ final class SceneViewController: NSViewController {
         }
 
         // Auto-discover 3D model files from bundle's models/ folder.
-        // Supported: .usdz, .obj, .dae, .scn
         if let modelsURL = Bundle.main.resourceURL?.appendingPathComponent("models") {
-            let supportedExts: Set<String> = ["usdz", "obj", "dae", "scn"]
-            if let modelFiles = try? FileManager.default.contentsOfDirectory(
-                at: modelsURL, includingPropertiesForKeys: nil, options: .skipsHiddenFiles
-            ) {
-                for fileURL in modelFiles.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-                    guard supportedExts.contains(fileURL.pathExtension.lowercased()) else { continue }
-                    let name = fileURL.deletingPathExtension().lastPathComponent
-                    let displayName = name.prefix(1).uppercased() + name.dropFirst()
-                    let url = fileURL
-                    availableScenes.append(SceneEntry(id: "model_\(name)", displayName: displayName) { [weak self] in
-                        self?.makeModelScene(fileURL: url) ?? SCNScene()
-                    })
-                }
-            }
+            discoverModels(in: modelsURL)
         }
+
+        // Auto-discover user-imported custom models from Application Support.
+        discoverModels(in: Self.customModelsDirectory, idPrefix: "custom_")
 
         // Default to first scene
         currentIndex = 0
+    }
+
+    private func discoverModels(in directory: URL, idPrefix: String = "model_") {
+        let supportedExts: Set<String> = ["usdz", "obj", "dae", "scn"]
+        guard let modelFiles = try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil, options: .skipsHiddenFiles
+        ) else { return }
+        for fileURL in modelFiles.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            guard supportedExts.contains(fileURL.pathExtension.lowercased()) else { continue }
+            let name = fileURL.deletingPathExtension().lastPathComponent
+            let displayName = name.prefix(1).uppercased() + name.dropFirst()
+            let url = fileURL
+            availableScenes.append(SceneEntry(id: "\(idPrefix)\(name)", displayName: displayName) { [weak self] in
+                self?.makeModelScene(fileURL: url) ?? SCNScene()
+            })
+        }
+    }
+
+    /// Validates and imports a 3D model file into persistent storage.
+    /// Returns the index of the new scene entry, or throws on failure.
+    func importCustomModel(from sourceURL: URL) throws -> Int {
+        let ext = sourceURL.pathExtension.lowercased()
+        let supportedExts: Set<String> = ["usdz", "obj", "dae", "scn"]
+        guard supportedExts.contains(ext) else {
+            throw ImportError.unsupportedFormat(ext)
+        }
+
+        // Validate the file can actually be loaded as a 3D scene.
+        do {
+            _ = try SCNScene(url: sourceURL, options: [.checkConsistency: true])
+        } catch {
+            throw ImportError.invalidModel(error.localizedDescription)
+        }
+
+        let destURL = Self.customModelsDirectory.appendingPathComponent(sourceURL.lastPathComponent)
+
+        // If a file with the same name already exists, remove it first (overwrite).
+        if FileManager.default.fileExists(atPath: destURL.path) {
+            try FileManager.default.removeItem(at: destURL)
+        }
+        try FileManager.default.copyItem(at: sourceURL, to: destURL)
+
+        // Add the new model as a scene entry.
+        let name = destURL.deletingPathExtension().lastPathComponent
+        let displayName = name.prefix(1).uppercased() + name.dropFirst()
+        let url = destURL
+        availableScenes.append(SceneEntry(id: "custom_\(name)", displayName: displayName) { [weak self] in
+            self?.makeModelScene(fileURL: url) ?? SCNScene()
+        })
+
+        return availableScenes.count - 1
+    }
+
+    enum ImportError: LocalizedError {
+        case unsupportedFormat(String)
+        case invalidModel(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .unsupportedFormat(let ext):
+                return "Unsupported file format \".\(ext)\". Please use .usdz, .obj, .dae, or .scn."
+            case .invalidModel(let reason):
+                return "The file could not be loaded as a 3D model.\n\n\(reason)"
+            }
+        }
     }
 
     func cycleScene() {
@@ -382,9 +451,22 @@ final class SceneViewController: NSViewController {
     }
 
     fileprivate func updateCamera(offset: HeadTracker.HeadOffset) {
-        let eyeX = Float(basePosition.x) + offset.x * lateralScale
-        let eyeY = Float(basePosition.y) + offset.y * verticalScale
-        let eyeZ = Float(basePosition.z) - (offset.z - 1.0) * depthScale
+        // Exponential moving average: smoothly converge toward the target
+        // position each frame. This eliminates micro-jumps from tracking noise.
+        smoothedX += (offset.x - smoothedX) * smoothingFactor
+        smoothedY += (offset.y - smoothedY) * smoothingFactor
+        smoothedZ += (offset.z - smoothedZ) * smoothingFactor
+
+        let eyeX = Float(basePosition.x) + smoothedX * lateralScale
+        let eyeY = Float(basePosition.y) + smoothedY * verticalScale
+        let eyeZ = Float(basePosition.z) - (smoothedZ - 1.0) * depthScale
+
+        // SCNTransaction implicit animation: SceneKit interpolates between the
+        // current and new values over the duration, acting as a second smoothing
+        // layer on top of the EMA. This guarantees sub-frame interpolation.
+        SCNTransaction.begin()
+        SCNTransaction.animationDuration = 0.05
+        SCNTransaction.animationTimingFunction = CAMediaTimingFunction(name: .linear)
 
         cameraNode.position = SCNVector3(CGFloat(eyeX), CGFloat(eyeY), CGFloat(eyeZ))
 
@@ -393,7 +475,10 @@ final class SceneViewController: NSViewController {
         // while the viewpoint (eye) moves.  This produces physically-correct
         // depth-dependent parallax — the hallmark of the "window" illusion.
         let dist = eyeZ - screenZ
-        guard dist > nearClip else { return }
+        guard dist > nearClip else {
+            SCNTransaction.commit()
+            return
+        }
 
         let halfW = screenHalfH * viewAspect
         let s     = nearClip / dist          // near-plane / eye-to-screen distance
@@ -411,8 +496,8 @@ final class SceneViewController: NSViewController {
         // head moves left → object turns right, head moves up → object tilts down.
         // Power curve (exp 1.5) amplifies rotation at extremes while keeping center subtle.
         if let model = modelNode {
-            let curvedX = copysign(pow(abs(offset.x), 1.5), offset.x)
-            let curvedY = copysign(pow(abs(offset.y), 1.5), offset.y)
+            let curvedX = copysign(pow(abs(smoothedX), 1.5), smoothedX)
+            let curvedY = copysign(pow(abs(smoothedY), 1.5), smoothedY)
             model.eulerAngles = SCNVector3(
                 curvedY * modelMaxRotX,
                -curvedX * modelMaxRotY,
@@ -421,10 +506,12 @@ final class SceneViewController: NSViewController {
 
             // Scale model based on depth — closer = bigger, further = smaller.
             // Clamp to avoid extreme sizes.
-            let depthScale = min(max(offset.z, 0.5), 2.0)
+            let depthScale = min(max(smoothedZ, 0.5), 2.0)
             let s = modelBaseScale * depthScale
             model.scale = SCNVector3(s, s, s)
         }
+
+        SCNTransaction.commit()
     }
 
     /// Builds an off-center perspective projection matrix (OpenGL convention).
