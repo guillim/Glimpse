@@ -13,6 +13,12 @@ final class SceneViewController: NSViewController {
     private let verticalScale: Float  = 3.0
     private let depthScale: Float     = 2.0
 
+    // 3D model rotation driven by head tracking
+    private var modelNode: SCNNode?
+    private var modelBaseScale: Float = 1.0
+    private let modelMaxRotY: Float = 15.0 * .pi / 180.0   // ±15°
+    private let modelMaxRotX: Float = 10.0 * .pi / 180.0   // ±10°
+
     // Neutral camera position
     private let basePosition = SCNVector3(0, 0, 20)
 
@@ -44,9 +50,6 @@ final class SceneViewController: NSViewController {
     private var currentScene: SCNScene?
 
     private func discoverScenes() {
-        // Procedural scenes (always available)
-        availableScenes.append(SceneEntry(id: "space", displayName: "Space", builder: makeSpaceScene))
-
         // Auto-discover parallax scenes from bundle's layers/ folder.
         // Convention: layers/{SceneName}/ contains {basename}_layer_01_*.png files.
         guard let layersURL = Bundle.main.resourceURL?.appendingPathComponent("layers") else { return }
@@ -70,10 +73,27 @@ final class SceneViewController: NSViewController {
             })
         }
 
-        // Default to first parallax scene if available, otherwise first scene
-        if let idx = availableScenes.firstIndex(where: { $0.id != "space" }) {
-            currentIndex = idx
+        // Auto-discover 3D model files from bundle's models/ folder.
+        // Supported: .usdz, .obj, .dae, .scn
+        if let modelsURL = Bundle.main.resourceURL?.appendingPathComponent("models") {
+            let supportedExts: Set<String> = ["usdz", "obj", "dae", "scn"]
+            if let modelFiles = try? FileManager.default.contentsOfDirectory(
+                at: modelsURL, includingPropertiesForKeys: nil, options: .skipsHiddenFiles
+            ) {
+                for fileURL in modelFiles.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+                    guard supportedExts.contains(fileURL.pathExtension.lowercased()) else { continue }
+                    let name = fileURL.deletingPathExtension().lastPathComponent
+                    let displayName = name.prefix(1).uppercased() + name.dropFirst()
+                    let url = fileURL
+                    availableScenes.append(SceneEntry(id: "model_\(name)", displayName: displayName) { [weak self] in
+                        self?.makeModelScene(fileURL: url) ?? SCNScene()
+                    })
+                }
+            }
         }
+
+        // Default to first scene
+        currentIndex = 0
     }
 
     func cycleScene() {
@@ -86,6 +106,7 @@ final class SceneViewController: NSViewController {
         currentIndex = index
 
         // Release the previous scene and its textures before building the new one.
+        modelNode = nil
         currentScene = nil
         sceneView.scene = nil
 
@@ -132,86 +153,6 @@ final class SceneViewController: NSViewController {
         cameraNode.position = basePosition
 
         switchToScene(index: currentIndex)
-    }
-
-    /// Procedural deep-space scene — no external assets needed.
-    private func makeSpaceScene() -> SCNScene {
-        let scene = SCNScene()
-
-        // --- Starfield ---
-        // One shared geometry + one GPU vertex buffer for all 800 stars.
-        // segmentCount=4 gives 32 triangles vs the default 2,304 — invisible at this size.
-        // Size variation is applied via per-node scale instead of separate geometry objects.
-        let sharedStar = SCNSphere(radius: 0.07)
-        sharedStar.segmentCount = 4
-        sharedStar.firstMaterial?.diffuse.contents  = NSColor.white
-        sharedStar.firstMaterial?.emission.contents = NSColor.white
-
-        for _ in 0..<800 {
-            let star = SCNNode(geometry: sharedStar)
-            let s = CGFloat.random(in: 0.3...1.5)
-            star.scale    = SCNVector3(s, s, s)
-            star.position = SCNVector3(
-                Float.random(in: -120...120),
-                Float.random(in: -80...80),
-                Float.random(in: -200...0)
-            )
-            scene.rootNode.addChildNode(star)
-        }
-
-        // --- Large glowing planet ---
-        let planet = SCNSphere(radius: 14)
-        let planetMat = SCNMaterial()
-        planetMat.diffuse.contents  = NSColor(calibratedRed: 0.1, green: 0.3, blue: 0.7, alpha: 1)
-        planetMat.emission.contents = NSColor(calibratedRed: 0.0, green: 0.05, blue: 0.2, alpha: 1)
-        planetMat.specular.contents = NSColor.white
-        planet.materials = [planetMat]
-        let planetNode = SCNNode(geometry: planet)
-        planetNode.position = SCNVector3(18, -6, -60)
-        let rotate = SCNAction.repeatForever(SCNAction.rotateBy(x: 0, y: 2 * .pi, z: 0, duration: 60))
-        planetNode.runAction(rotate)
-        scene.rootNode.addChildNode(planetNode)
-
-        // --- Rings around the planet ---
-        let ring = SCNTorus(ringRadius: 20, pipeRadius: 0.5)
-        let ringMat = SCNMaterial()
-        ringMat.diffuse.contents  = NSColor(calibratedRed: 0.8, green: 0.7, blue: 0.5, alpha: 0.7)
-        ringMat.isDoubleSided = true
-        ring.materials = [ringMat]
-        let ringNode = SCNNode(geometry: ring)
-        ringNode.position = planetNode.position
-        ringNode.eulerAngles = SCNVector3(Float.pi / 6, 0, 0)
-        scene.rootNode.addChildNode(ringNode)
-
-        // --- Nearby rocky asteroid ---
-        let rock = SCNSphere(radius: 1.2)
-        rock.segmentCount = 6
-        let rockMat = SCNMaterial()
-        rockMat.diffuse.contents = NSColor(calibratedWhite: 0.35, alpha: 1)
-        rock.materials = [rockMat]
-        let rockNode = SCNNode(geometry: rock)
-        rockNode.position = SCNVector3(-8, 3, 0)
-        let rockOrbit = SCNAction.repeatForever(SCNAction.rotateBy(x: 0.3, y: 1, z: 0.1, duration: 8))
-        rockNode.runAction(rockOrbit)
-        scene.rootNode.addChildNode(rockNode)
-
-        // --- Ambient + directional light ---
-        let ambient = SCNNode()
-        ambient.light = SCNLight()
-        ambient.light?.type = .ambient
-        ambient.light?.intensity = 200
-        ambient.light?.color = NSColor(calibratedRed: 0.1, green: 0.1, blue: 0.2, alpha: 1)
-        scene.rootNode.addChildNode(ambient)
-
-        let sun = SCNNode()
-        sun.light = SCNLight()
-        sun.light?.type = .directional
-        sun.light?.intensity = 800
-        sun.light?.color = NSColor(calibratedRed: 1.0, green: 0.95, blue: 0.8, alpha: 1)
-        sun.eulerAngles = SCNVector3(-Float.pi / 4, Float.pi / 4, 0)
-        scene.rootNode.addChildNode(sun)
-
-        return scene
     }
 
     // MARK: - Layer manifest
@@ -337,6 +278,74 @@ final class SceneViewController: NSViewController {
         return scene
     }
 
+    /// 3D model scene — loads an external model file, centers and scales it,
+    /// and rotates it per-frame based on head tracking.
+    private func makeModelScene(fileURL: URL) -> SCNScene {
+        let loaded: SCNScene
+        do {
+            loaded = try SCNScene(url: fileURL, options: [.checkConsistency: true])
+        } catch {
+            print("Warning: failed to load model \(fileURL.path): \(error)")
+            return SCNScene()
+        }
+
+        // Gather all content nodes into a single container for bounding-box calculation.
+        let content = SCNNode()
+        for child in loaded.rootNode.childNodes {
+            child.removeFromParentNode()
+            content.addChildNode(child)
+        }
+
+        // Center the model at the origin and scale it to fit within a target size.
+        let (minB, maxB) = content.boundingBox
+        let center = SCNVector3(
+            (minB.x + maxB.x) / 2,
+            (minB.y + maxB.y) / 2,
+            (minB.z + maxB.z) / 2
+        )
+        let maxExtent = max(maxB.x - minB.x, maxB.y - minB.y, maxB.z - minB.z)
+        let targetSize: Float = 12.0
+        let scale = maxExtent > 0 ? targetSize / Float(maxExtent) : 1.0
+
+        content.position = SCNVector3(-center.x, -center.y, -center.z)
+
+        let wrapper = SCNNode()
+        wrapper.addChildNode(content)
+        wrapper.scale = SCNVector3(scale, scale, scale)
+        wrapper.position = SCNVector3(0, 0, -5)   // slightly behind the window plane
+
+        let scene = SCNScene()
+        scene.rootNode.addChildNode(wrapper)
+        modelNode = wrapper
+        modelBaseScale = scale
+
+        // Three-point lighting for good model readability
+        let ambient = SCNNode()
+        ambient.light = SCNLight()
+        ambient.light?.type = .ambient
+        ambient.light?.intensity = 400
+        ambient.light?.color = NSColor(calibratedWhite: 0.8, alpha: 1)
+        scene.rootNode.addChildNode(ambient)
+
+        let key = SCNNode()
+        key.light = SCNLight()
+        key.light?.type = .directional
+        key.light?.intensity = 800
+        key.light?.color = NSColor.white
+        key.eulerAngles = SCNVector3(-Float.pi / 4, Float.pi / 4, 0)
+        scene.rootNode.addChildNode(key)
+
+        let fill = SCNNode()
+        fill.light = SCNLight()
+        fill.light?.type = .directional
+        fill.light?.intensity = 300
+        fill.light?.color = NSColor(calibratedWhite: 0.9, alpha: 1)
+        fill.eulerAngles = SCNVector3(Float.pi / 6, -Float.pi / 3, 0)
+        scene.rootNode.addChildNode(fill)
+
+        return scene
+    }
+
     // MARK: - Power Management
 
     private var isOccluded = false
@@ -397,6 +406,25 @@ final class SceneViewController: NSViewController {
             near:   nearClip,
             far:    farClip
         )
+
+        // Rotate 3D model opposite to head movement so it reveals its far side —
+        // head moves left → object turns right, head moves up → object tilts down.
+        // Power curve (exp 1.5) amplifies rotation at extremes while keeping center subtle.
+        if let model = modelNode {
+            let curvedX = copysign(pow(abs(offset.x), 1.5), offset.x)
+            let curvedY = copysign(pow(abs(offset.y), 1.5), offset.y)
+            model.eulerAngles = SCNVector3(
+                curvedY * modelMaxRotX,
+               -curvedX * modelMaxRotY,
+                0
+            )
+
+            // Scale model based on depth — closer = bigger, further = smaller.
+            // Clamp to avoid extreme sizes.
+            let depthScale = min(max(offset.z, 0.5), 2.0)
+            let s = modelBaseScale * depthScale
+            model.scale = SCNVector3(s, s, s)
+        }
     }
 
     /// Builds an off-center perspective projection matrix (OpenGL convention).

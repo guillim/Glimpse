@@ -13,6 +13,7 @@
 		A1000004 /* SceneViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000004 /* SceneViewController.swift */; };
 		A1000005 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000006 /* main.swift */; };
 		AA000001 /* layers in Resources */ = {isa = PBXBuildFile; fileRef = AA000002 /* layers */; };
+		AB000001 /* models in Resources */ = {isa = PBXBuildFile; fileRef = AB000002 /* models */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,6 +25,7 @@
 		A2000006 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		A3000001 /* Glimpse.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Glimpse.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA000002 /* layers */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "public/layers"; sourceTree = SOURCE_ROOT; };
+		AB000002 /* models */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "public/models"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -64,6 +66,7 @@
 				A5000002 /* Glimpse */,
 				A5000001 /* Products */,
 				AA000002 /* layers */,
+				AB000002 /* models */,
 			);
 			sourceTree = "<group>";
 		};
@@ -122,6 +125,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA000001 /* layers in Resources */,
+				AB000001 /* models in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
