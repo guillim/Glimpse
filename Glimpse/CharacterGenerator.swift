@@ -94,7 +94,6 @@ enum CharacterGenerator {
         let t = traits(for: sessionID)
         let s = size
         let scale: CGFloat = 2.0  // retina
-        print("[CharacterGenerator] generate size=\(s), pixels=\(Int(s * scale))x\(Int(s * scale))")
 
         guard let ctx = CGContext(
             data: nil,
@@ -317,7 +316,6 @@ enum CharacterGenerator {
         }
 
         let image = ctx.makeImage()
-        print("[CharacterGenerator] makeImage result: \(image != nil ? "\(image!.width)x\(image!.height)" : "nil")")
         return image
     }
 }

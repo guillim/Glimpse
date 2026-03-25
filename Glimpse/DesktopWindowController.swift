@@ -52,7 +52,6 @@ final class DesktopWindowController: NSWindowController {
         // properly because the view hierarchy wasn't laid out yet.
         // Re-trigger it now that the window is visible and properly sized.
         if let svc = sceneViewController, svc.pokemonScene != nil {
-            print("[DesktopWindowController] Re-triggering SpriteKit swap after window show")
             svc.switchToScene(index: svc.currentSceneIndex)
         }
     }
@@ -61,12 +60,10 @@ final class DesktopWindowController: NSWindowController {
 
     private func swapToSpriteKit(scene: SKScene) {
         guard let window = window else {
-            print("[DesktopWindowController] swapToSpriteKit — no window!")
             return
         }
 
         let frame = window.frame
-        print("[DesktopWindowController] swapToSpriteKit — window.frame=\(frame)")
 
         // Create SKView sized to the WINDOW frame (not contentView which may be zero during init)
         if skView == nil {
@@ -93,7 +90,6 @@ final class DesktopWindowController: NSWindowController {
             }
         }
         sv.isHidden = false
-        print("[DesktopWindowController] SKView frame: \(sv.frame), scene.size: \(scene.size)")
     }
 
     private func swapToSceneKit() {

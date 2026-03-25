@@ -229,7 +229,6 @@ final class SceneViewController: NSViewController {
             pokemon.scaleMode = .resizeFill
             pokemon.headTracker = headTracker
             pokemonScene = pokemon
-            print("[SceneViewController] switchToScene: SpriteKit, size=\(sceneSize)")
 
             // Direct call via onSwitchToSpriteKit closure (set by DesktopWindowController)
             onSwitchToSpriteKit?(pokemon)

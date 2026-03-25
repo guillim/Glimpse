@@ -45,10 +45,8 @@ final class PokemonScene: SKScene {
         addChild(emptyLabel)
         emptyLabel.position = CGPoint(x: size.width / 2, y: size.height / 2)
         addChild(gazeDot)
-        print("[PokemonScene] didMove — size: \(size)")
 
         sessionMonitor.onUpdate = { [weak self] sessions in
-            print("[PokemonScene] onUpdate — \(sessions.count) sessions found")
             self?.handleSessionUpdate(sessions)
         }
         sessionMonitor.start()
@@ -61,7 +59,6 @@ final class PokemonScene: SKScene {
     override func didChangeSize(_ oldSize: CGSize) {
         super.didChangeSize(oldSize)
         emptyLabel.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        print("[PokemonScene] didChangeSize: \(oldSize) → \(size)")
         relayout()
     }
 
@@ -84,7 +81,6 @@ final class PokemonScene: SKScene {
         // Add new or update existing sessions
         let nonStaleSessions = sessions.filter { !$0.isStale }
         let charSize = characterSize(for: nonStaleSessions.count)
-        print("[PokemonScene] scene.size=\(size), charSize=\(charSize), nonStale=\(nonStaleSessions.count)")
         for session in nonStaleSessions {
             guard !departingNodes.contains(session.id) else { continue }
             if let existing = characterNodes[session.id] {
@@ -94,7 +90,6 @@ final class PokemonScene: SKScene {
                 existing.updateLastOutput(session.lastOutput)
             } else {
                 // New session — create character
-                print("[PokemonScene] Creating character for session \(session.id.prefix(8))... project=\(session.projectName) topic=\(session.topic)")
                 let node = CharacterNode(
                     sessionID: session.id,
                     projectName: session.projectName,
@@ -110,7 +105,6 @@ final class PokemonScene: SKScene {
                 node.animateAppear()
                 addChild(node)
                 characterNodes[session.id] = node
-                print("[PokemonScene] Character node position=\(node.position), children=\(node.children.count)")
             }
         }
 
@@ -161,10 +155,8 @@ final class PokemonScene: SKScene {
         let activeNodes = characterNodes.values.filter { !departingNodes.contains($0.sessionID) }
         let count = activeNodes.count
         guard count > 0 else {
-            print("[PokemonScene] relayout: no active nodes")
             return
         }
-        print("[PokemonScene] relayout: \(count) nodes, scene.size=\(size)")
 
         let cols = columns(for: count)
         let rows = Int(ceil(Double(count) / Double(cols)))
@@ -255,13 +247,10 @@ final class PokemonScene: SKScene {
         // Extract the directory name for matching window titles.
         // Terminal windows typically show the current directory in their title.
         let dirName = (projectPath as NSString).lastPathComponent
-        print("[PokemonScene] Activating terminal for '\(dirName)' (path: \(projectPath))")
 
         // Try Terminal.app first, then iTerm2
         if !activateTerminalApp(matching: dirName) {
-            if !activateITerm(matching: dirName) {
-                print("[PokemonScene] No matching terminal window found for '\(dirName)'")
-            }
+            _ = activateITerm(matching: dirName)
         }
     }
 
@@ -318,8 +307,7 @@ final class PokemonScene: SKScene {
         guard let script = NSAppleScript(source: source) else { return false }
         var error: NSDictionary?
         let result = script.executeAndReturnError(&error)
-        if let err = error {
-            print("[PokemonScene] AppleScript error: \(err)")
+        if error != nil {
             return false
         }
         return result.booleanValue
