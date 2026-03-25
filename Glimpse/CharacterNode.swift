@@ -187,7 +187,7 @@ final class CharacterNode: SKNode {
         }
         // Start 10s activation timer
         activateTimer?.invalidate()
-        activateTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
+        activateTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
             guard let self = self, !self.hasActivated else { return }
             self.hasActivated = true
             self.showActivationEffect()
