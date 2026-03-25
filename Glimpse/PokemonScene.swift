@@ -26,7 +26,6 @@ final class PokemonScene: SKScene {
 
     // Gaze interaction state
     private var focusedCharacterID: String?
-    private var lastUpdateTime: TimeInterval = 0
 
     // MARK: - Scene Lifecycle
 
