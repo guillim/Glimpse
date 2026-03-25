@@ -6,7 +6,7 @@ import SceneKit
 final class SceneViewController: NSViewController {
 
     private let sceneView = SCNView()
-    private let headTracker = HeadTracker()
+    private(set) var headTracker = HeadTracker()
     private let cameraNode = SCNNode()
 
     // How many scene units the camera shifts per unit of head movement
@@ -55,14 +55,16 @@ final class SceneViewController: NSViewController {
         let cameraX: Float
         let cameraY: Float
         let cameraZ: Float
+        let isSpriteKit: Bool
         fileprivate let builder: () -> SCNScene
 
-        init(id: String, displayName: String, cameraX: Float = 0, cameraY: Float = 0, cameraZ: Float = 20, builder: @escaping () -> SCNScene) {
+        init(id: String, displayName: String, cameraX: Float = 0, cameraY: Float = 0, cameraZ: Float = 20, isSpriteKit: Bool = false, builder: @escaping () -> SCNScene = { SCNScene() }) {
             self.id = id
             self.displayName = displayName
             self.cameraX = cameraX
             self.cameraY = cameraY
             self.cameraZ = cameraZ
+            self.isSpriteKit = isSpriteKit
             self.builder = builder
         }
     }
@@ -83,8 +85,16 @@ final class SceneViewController: NSViewController {
     // Holds only the active scene. Previous scene is released so its
     // decoded textures (~30-60 MB each) don't linger in RAM.
     private var currentScene: SCNScene?
+    private var pokemonScene: PokemonScene?
 
     private func discoverScenes() {
+        // Pokemon SpriteKit theme — always first
+        availableScenes.append(SceneEntry(
+            id: "pokemon_monitor",
+            displayName: "Pokemon Monitor",
+            isSpriteKit: true
+        ))
+
         // Auto-discover 3D model files from bundle's models/ folder.
         if let modelsURL = Bundle.main.resourceURL?.appendingPathComponent("models") {
             discoverModels(in: modelsURL)
@@ -206,20 +216,44 @@ final class SceneViewController: NSViewController {
         // Persist the selection so it survives relaunch.
         UserDefaults.standard.set(availableScenes[index].id, forKey: "selectedSceneID")
 
-        // Release the previous scene and its textures before building the new one.
-        modelNode = nil
-        currentScene = nil
-        sceneView.scene = nil
-
         let entry = availableScenes[index]
-        let scene = entry.builder()
-        currentScene = scene
-        currentCameraX = entry.cameraX
-        currentCameraY = entry.cameraY
-        currentCameraZ = entry.cameraZ
-        cameraNode.position = SCNVector3(CGFloat(entry.cameraX), CGFloat(entry.cameraY), CGFloat(entry.cameraZ))
-        scene.rootNode.addChildNode(cameraNode)
-        sceneView.scene = scene
+
+        if entry.isSpriteKit {
+            // Switching to SpriteKit theme — notify the window controller
+            modelNode = nil
+            currentScene = nil
+            sceneView.scene = nil
+            sceneView.isPlaying = false
+
+            let pokemon = PokemonScene(size: view.bounds.size)
+            pokemon.scaleMode = .resizeFill
+            pokemon.headTracker = headTracker
+            pokemonScene = pokemon
+
+            // Tell the window controller to swap views
+            NotificationCenter.default.post(
+                name: .switchToSpriteKit,
+                object: self,
+                userInfo: ["scene": pokemon]
+            )
+        } else {
+            // Switching to SceneKit theme
+            pokemonScene = nil
+            NotificationCenter.default.post(
+                name: .switchToSceneKit,
+                object: self
+            )
+
+            let scene = entry.builder()
+            currentScene = scene
+            currentCameraX = entry.cameraX
+            currentCameraY = entry.cameraY
+            currentCameraZ = entry.cameraZ
+            cameraNode.position = SCNVector3(CGFloat(entry.cameraX), CGFloat(entry.cameraY), CGFloat(entry.cameraZ))
+            scene.rootNode.addChildNode(cameraNode)
+            sceneView.scene = scene
+            updatePowerState()
+        }
     }
 
     /// Removes a custom model from disk and the scene list. Returns true if removed.
@@ -505,6 +539,13 @@ final class SceneViewController: NSViewController {
             m41: 0,                   m42: 0,                    m43: CGFloat(-2 * f * n / fn), m44: 0
         )
     }
+}
+
+// MARK: - Notification Names
+
+extension Notification.Name {
+    static let switchToSpriteKit = Notification.Name("Glimpse.switchToSpriteKit")
+    static let switchToSceneKit  = Notification.Name("Glimpse.switchToSceneKit")
 }
 
 // MARK: - SCNSceneRendererDelegate
