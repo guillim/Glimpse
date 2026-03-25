@@ -25,10 +25,6 @@ final class CharacterNode: SKNode {
 
     /// Whether the hello bubble is currently showing.
     private var isHelloVisible = false
-    private var dwellTimer: Timer?
-    private var activateTimer: Timer?
-    private var countdownTimer: Timer?
-    private var countdownValue: Int = 3
     private var hasActivated = false
     private var isCountingDown = false
 
@@ -125,12 +121,6 @@ final class CharacterNode: SKNode {
 
     required init?(coder: NSCoder) { fatalError("Not implemented") }
 
-    deinit {
-        dwellTimer?.invalidate()
-        activateTimer?.invalidate()
-        countdownTimer?.invalidate()
-    }
-
     // MARK: - Status Updates
 
     func updateActivity(_ activity: SessionMonitor.Activity) {
@@ -146,7 +136,8 @@ final class CharacterNode: SKNode {
         case .thinking:  newEmoji = "🧠"; newWord = "think"
         case .spawning:  newEmoji = "🐣"; newWord = "spawn"
         case .searching: newEmoji = "🔍"; newWord = "search"
-        case .waiting:   newEmoji = "❓"; newWord = "wait"
+        case .asking:    newEmoji = "❓"; newWord = idleDurationText.map { "ask \($0)" } ?? "ask"
+        case .done:      newEmoji = "✅"; newWord = idleDurationText.map { "done \($0)" } ?? "done"
         case .sleeping:  newEmoji = "💤"; newWord = idleDurationText ?? "idle"
         }
 
@@ -168,14 +159,21 @@ final class CharacterNode: SKNode {
         topicLabel.text = topic
     }
 
-    /// Update the idle duration and refresh the activity word label if sleeping.
+    /// Update the idle duration and refresh the activity word label for standby states.
     func updateIdleDuration(_ seconds: TimeInterval) {
         let newText = Self.formatIdleDuration(seconds)
         guard newText != idleDurationText else { return }
         idleDurationText = newText
-        // If currently sleeping, update the word label live
-        if currentActivity == .sleeping {
+        // Update the word label live for standby states
+        switch currentActivity {
+        case .sleeping:
             activityWordLabel.text = newText ?? "idle"
+        case .asking:
+            activityWordLabel.text = newText.map { "ask \($0)" } ?? "ask"
+        case .done:
+            activityWordLabel.text = newText.map { "done \($0)" } ?? "done"
+        default:
+            break
         }
     }
 
@@ -227,25 +225,26 @@ final class CharacterNode: SKNode {
     func gazeEntered() {
         hasActivated = false
         if !isHelloVisible {
-            dwellTimer?.invalidate()
-            dwellTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
-                self?.showHello()
-            }
+            run(.sequence([
+                .wait(forDuration: 0.3),
+                .run { [weak self] in self?.showHello() }
+            ]), withKey: "dwell")
         }
         // Start 3s timer before showing countdown
-        activateTimer?.invalidate()
-        activateTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
-            guard let self = self, !self.hasActivated else { return }
-            self.startCountdown()
-        }
+        run(.sequence([
+            .wait(forDuration: 3.0),
+            .run { [weak self] in
+                guard let self = self, !self.hasActivated else { return }
+                self.startCountdown()
+            }
+        ]), withKey: "activate")
     }
 
     /// Call when gaze leaves this character's hitbox.
     func gazeExited() {
-        dwellTimer?.invalidate()
-        dwellTimer = nil
-        activateTimer?.invalidate()
-        activateTimer = nil
+        removeAction(forKey: "dwell")
+        removeAction(forKey: "activate")
+        removeAction(forKey: "postActivate")
         cancelCountdown()
         hasActivated = false
         hideHello()
@@ -274,36 +273,39 @@ final class CharacterNode: SKNode {
 
     // MARK: - Countdown & Activation
 
-    /// Start the 3-2-1 countdown. Replaces the log bubble with the warning.
+    /// Start the 3-2-1 countdown using an SKAction sequence.
     private func startCountdown() {
         guard !isCountingDown else { return }
         isCountingDown = true
-        countdownValue = 3
-        showCountdownText()
 
-        countdownTimer?.invalidate()
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            self.countdownValue -= 1
-            if self.countdownValue <= 0 {
-                self.countdownTimer?.invalidate()
-                self.countdownTimer = nil
-                self.isCountingDown = false
-                self.hasActivated = true
-                self.onActivate?()
-                // Restore the log bubble after redirect
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                    guard let self = self, self.isHelloVisible else { return }
-                    self.updateBubbleText(self.lastOutput)
-                }
-            } else {
-                self.showCountdownText()
-            }
-        }
+        run(.sequence([
+            .run { [weak self] in self?.showCountdownText(3) },
+            .wait(forDuration: 1.0),
+            .run { [weak self] in self?.showCountdownText(2) },
+            .wait(forDuration: 1.0),
+            .run { [weak self] in self?.showCountdownText(1) },
+            .wait(forDuration: 1.0),
+            .run { [weak self] in self?.finishCountdown() }
+        ]), withKey: "countdown")
     }
 
-    private func showCountdownText() {
-        let msg = "Redirecting to this agent in \(countdownValue)..."
+    /// Called when countdown reaches zero.
+    private func finishCountdown() {
+        isCountingDown = false
+        hasActivated = true
+        onActivate?()
+        // Restore the log bubble after redirect
+        run(.sequence([
+            .wait(forDuration: 0.5),
+            .run { [weak self] in
+                guard let self = self, self.isHelloVisible else { return }
+                self.updateBubbleText(self.lastOutput)
+            }
+        ]), withKey: "postActivate")
+    }
+
+    private func showCountdownText(_ value: Int) {
+        let msg = "Redirecting to this agent in \(value)..."
         updateBubbleText(msg)
         // Change bubble style to warning (orange tint)
         helloBubbleBG.fillColor = .init(red: 0.15, green: 0.08, blue: 0.0, alpha: 0.92)
@@ -314,8 +316,7 @@ final class CharacterNode: SKNode {
     /// Cancel the countdown and restore the log bubble.
     private func cancelCountdown() {
         guard isCountingDown else { return }
-        countdownTimer?.invalidate()
-        countdownTimer = nil
+        removeAction(forKey: "countdown")
         isCountingDown = false
         // Restore bubble style
         helloText.fontColor = .init(red: 0.85, green: 0.95, blue: 0.85, alpha: 1)
