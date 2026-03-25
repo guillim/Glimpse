@@ -31,7 +31,6 @@ final class SessionMonitor {
     var onUpdate: (([Session]) -> Void)?
 
     private var timer: Timer?
-    private var previousSessions: [String: Session] = [:]
 
     /// Base directory for Claude Code projects.
     private let claudeProjectsDir: URL = {
@@ -61,7 +60,6 @@ final class SessionMonitor {
             guard let self = self else { return }
             let sessions = self.discoverSessions()
             DispatchQueue.main.async {
-                self.previousSessions = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
                 self.onUpdate?(sessions)
             }
         }
@@ -138,12 +136,21 @@ final class SessionMonitor {
     }
 
     /// Read last ~10 lines of a JSONL file and classify activity.
+    /// Uses FileHandle to read only the tail of potentially large files.
     static func classifyActivity(fileURL: URL, lastModified: Date, now: Date) -> Activity {
         // If no activity for 2+ minutes, sleeping
         if now.timeIntervalSince(lastModified) > 120 { return .sleeping }
 
-        guard let data = try? Data(contentsOf: fileURL),
-              let content = String(data: data, encoding: .utf8) else {
+        // Read only the last ~32KB to avoid loading multi-MB session logs entirely.
+        let tailBytes = 32 * 1024
+        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return .sleeping }
+        defer { try? handle.close() }
+
+        let fileSize = handle.seekToEndOfFile()
+        let readOffset = fileSize > UInt64(tailBytes) ? fileSize - UInt64(tailBytes) : 0
+        handle.seek(toFileOffset: readOffset)
+        let data = handle.availableData
+        guard let content = String(data: data, encoding: .utf8) else {
             return .sleeping
         }
 

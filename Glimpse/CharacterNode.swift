@@ -185,11 +185,11 @@ final class CharacterNode: SKNode {
     var hitboxRadius: CGFloat { characterSize * 0.75 }
 
     /// Rescale the entire node to display at a new effective size.
+    /// Skips helloBubble to avoid conflicting with its show/hide animations.
     func rescale(to newSize: CGFloat) {
         let s = newSize / characterSize
         bodySprite.setScale(s)
         statusLabel.setScale(s)
         projectLabel.setScale(s)
-        helloBubble.setScale(s)
     }
 }

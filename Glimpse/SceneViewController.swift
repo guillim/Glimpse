@@ -448,9 +448,11 @@ final class SceneViewController: NSViewController {
     private func updatePowerState() {
         if shouldRun {
             headTracker.start()
-            sceneView.isPlaying = true
-            // Throttle frame rate on battery to save energy.
-            sceneView.preferredFramesPerSecond = isOnBattery ? Self.batteryFPS : 0
+            // Only resume SceneKit rendering if current theme is not SpriteKit.
+            if pokemonScene == nil {
+                sceneView.isPlaying = true
+                sceneView.preferredFramesPerSecond = isOnBattery ? Self.batteryFPS : 0
+            }
         } else {
             sceneView.isPlaying = false
             headTracker.stop()
