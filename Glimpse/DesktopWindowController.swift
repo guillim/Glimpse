@@ -8,7 +8,6 @@ final class DesktopWindowController: NSWindowController {
 
     private(set) var sceneViewController: SceneViewController?
     private var skView: SKView?
-    private var notificationObservers: [NSObjectProtocol] = []
 
     convenience init() {
         let screen = NSScreen.main ?? NSScreen.screens[0]
@@ -27,13 +26,19 @@ final class DesktopWindowController: NSWindowController {
         win.ignoresMouseEvents = true
         win.backgroundColor = .black
 
-        // Register notification observers BEFORE creating the VC, since
-        // VC init triggers viewDidLoad → setupScene → switchToScene which
-        // may post .switchToSpriteKit immediately.
         self.init(window: win)
-        setupViewSwapObservers()
 
         let vc = SceneViewController()
+
+        // Wire up view-swap closures BEFORE setting contentViewController,
+        // because that triggers viewDidLoad → setupScene → switchToScene.
+        vc.onSwitchToSpriteKit = { [weak self] scene in
+            self?.swapToSpriteKit(scene: scene)
+        }
+        vc.onSwitchToSceneKit = { [weak self] in
+            self?.swapToSceneKit()
+        }
+
         win.contentViewController = vc
         win.setFrame(screen.frame, display: false)
 
@@ -46,33 +51,6 @@ final class DesktopWindowController: NSWindowController {
     }
 
     // MARK: - View Swapping
-
-    private func setupViewSwapObservers() {
-        notificationObservers.append(
-            NotificationCenter.default.addObserver(
-                forName: .switchToSpriteKit,
-                object: nil,
-                queue: .main
-            ) { [weak self] notification in
-                guard let scene = notification.userInfo?["scene"] as? SKScene else { return }
-                self?.swapToSpriteKit(scene: scene)
-            }
-        )
-
-        notificationObservers.append(
-            NotificationCenter.default.addObserver(
-                forName: .switchToSceneKit,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                self?.swapToSceneKit()
-            }
-        )
-    }
-
-    deinit {
-        notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
-    }
 
     private func swapToSpriteKit(scene: SKScene) {
         print("[DesktopWindowController] swapToSpriteKit called")
@@ -100,6 +78,7 @@ final class DesktopWindowController: NSWindowController {
         }
         sv.isHidden = false
         sv.frame = window.contentView?.bounds ?? window.frame
+        print("[DesktopWindowController] SKView frame: \(sv.frame), scene size: \(scene.size)")
     }
 
     private func swapToSceneKit() {

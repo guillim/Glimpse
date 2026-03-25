@@ -1,6 +1,7 @@
 import AppKit
 import IOKit.ps
 import SceneKit
+import SpriteKit
 
 /// Hosts a SceneKit scene and offsets the camera based on head tracking data.
 final class SceneViewController: NSViewController {
@@ -86,6 +87,10 @@ final class SceneViewController: NSViewController {
     // decoded textures (~30-60 MB each) don't linger in RAM.
     private var currentScene: SCNScene?
     private var pokemonScene: PokemonScene?
+
+    /// Closures called by switchToScene for view swapping (set by DesktopWindowController).
+    var onSwitchToSpriteKit: ((SKScene) -> Void)?
+    var onSwitchToSceneKit: (() -> Void)?
 
     private func discoverScenes() {
         // Pokemon SpriteKit theme — always first
@@ -219,7 +224,7 @@ final class SceneViewController: NSViewController {
         let entry = availableScenes[index]
 
         if entry.isSpriteKit {
-            // Switching to SpriteKit theme — notify the window controller
+            // Switching to SpriteKit theme
             modelNode = nil
             currentScene = nil
             sceneView.scene = nil
@@ -230,20 +235,14 @@ final class SceneViewController: NSViewController {
             pokemon.scaleMode = .resizeFill
             pokemon.headTracker = headTracker
             pokemonScene = pokemon
+            print("[SceneViewController] switchToScene: SpriteKit, size=\(sceneSize)")
 
-            // Tell the window controller to swap views
-            NotificationCenter.default.post(
-                name: .switchToSpriteKit,
-                object: self,
-                userInfo: ["scene": pokemon]
-            )
+            // Direct call via onSwitchToSpriteKit closure (set by DesktopWindowController)
+            onSwitchToSpriteKit?(pokemon)
         } else {
             // Switching to SceneKit theme
             pokemonScene = nil
-            NotificationCenter.default.post(
-                name: .switchToSceneKit,
-                object: self
-            )
+            onSwitchToSceneKit?()
 
             let scene = entry.builder()
             currentScene = scene
@@ -542,13 +541,6 @@ final class SceneViewController: NSViewController {
             m41: 0,                   m42: 0,                    m43: CGFloat(-2 * f * n / fn), m44: 0
         )
     }
-}
-
-// MARK: - Notification Names
-
-extension Notification.Name {
-    static let switchToSpriteKit = Notification.Name("Glimpse.switchToSpriteKit")
-    static let switchToSceneKit  = Notification.Name("Glimpse.switchToSceneKit")
 }
 
 // MARK: - SCNSceneRendererDelegate
