@@ -33,8 +33,10 @@ final class PokemonScene: SKScene {
         backgroundColor = .black
         addChild(emptyLabel)
         emptyLabel.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        print("[PokemonScene] didMove — size: \(size)")
 
         sessionMonitor.onUpdate = { [weak self] sessions in
+            print("[PokemonScene] onUpdate — \(sessions.count) sessions found")
             self?.handleSessionUpdate(sessions)
         }
         sessionMonitor.start()

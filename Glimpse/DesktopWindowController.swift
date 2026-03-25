@@ -27,14 +27,17 @@ final class DesktopWindowController: NSWindowController {
         win.ignoresMouseEvents = true
         win.backgroundColor = .black
 
+        // Register notification observers BEFORE creating the VC, since
+        // VC init triggers viewDidLoad → setupScene → switchToScene which
+        // may post .switchToSpriteKit immediately.
+        self.init(window: win)
+        setupViewSwapObservers()
+
         let vc = SceneViewController()
         win.contentViewController = vc
         win.setFrame(screen.frame, display: false)
 
-        self.init(window: win)
         self.sceneViewController = vc
-
-        setupViewSwapObservers()
     }
 
     override func showWindow(_ sender: Any?) {
@@ -72,7 +75,11 @@ final class DesktopWindowController: NSWindowController {
     }
 
     private func swapToSpriteKit(scene: SKScene) {
-        guard let window = window else { return }
+        print("[DesktopWindowController] swapToSpriteKit called")
+        guard let window = window else {
+            print("[DesktopWindowController] swapToSpriteKit — no window!")
+            return
+        }
 
         // Create SKView if needed
         if skView == nil {

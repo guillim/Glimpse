@@ -225,7 +225,8 @@ final class SceneViewController: NSViewController {
             sceneView.scene = nil
             sceneView.isPlaying = false
 
-            let pokemon = PokemonScene(size: view.bounds.size)
+            let sceneSize = view.bounds.size.width > 0 ? view.bounds.size : (NSScreen.main?.frame.size ?? CGSize(width: 1920, height: 1080))
+            let pokemon = PokemonScene(size: sceneSize)
             pokemon.scaleMode = .resizeFill
             pokemon.headTracker = headTracker
             pokemonScene = pokemon
