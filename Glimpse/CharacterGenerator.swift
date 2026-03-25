@@ -24,7 +24,7 @@ enum CharacterGenerator {
         let cheekStyle: CheekStyle
     }
 
-    /// Pokemon-inspired color palette.
+    /// Pokemon-inspired color palette (must stay in sync with accentColors).
     private static let bodyColors: [NSColor] = [
         NSColor(red: 1.0,  green: 0.8,  blue: 0.02, alpha: 1), // Pikachu yellow
         NSColor(red: 0.93, green: 0.30, blue: 0.22, alpha: 1), // Charmander red
@@ -74,6 +74,7 @@ enum CharacterGenerator {
 
     /// Derive all traits from a session ID.
     static func traits(for sessionID: String) -> Traits {
+        precondition(bodyColors.count == accentColors.count, "bodyColors and accentColors must have equal count")
         var s = seed(from: sessionID)
         let bodyIdx = pickIndex(&s, count: bodyColors.count)
         return Traits(
