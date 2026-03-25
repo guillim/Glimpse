@@ -68,11 +68,19 @@ final class SessionMonitor {
     /// Discover all active sessions across all projects.
     private func discoverSessions() -> [Session] {
         let fm = FileManager.default
+        print("[SessionMonitor] Scanning: \(claudeProjectsDir.path)")
+        print("[SessionMonitor] Dir exists: \(fm.fileExists(atPath: claudeProjectsDir.path))")
+
         guard let projectDirs = try? fm.contentsOfDirectory(
             at: claudeProjectsDir,
             includingPropertiesForKeys: [.isDirectoryKey],
             options: .skipsHiddenFiles
-        ) else { return [] }
+        ) else {
+            print("[SessionMonitor] contentsOfDirectory FAILED for \(claudeProjectsDir.path)")
+            return []
+        }
+
+        print("[SessionMonitor] Found \(projectDirs.count) entries in projects/")
 
         var sessions: [Session] = []
         let now = Date()
@@ -80,7 +88,11 @@ final class SessionMonitor {
         let staleThreshold: TimeInterval  = 10 * 60   // 10 minutes → stale tier (dead beyond this)
 
         for dirURL in projectDirs {
-            guard (try? dirURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { continue }
+            let isDir = (try? dirURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+            if !isDir {
+                print("[SessionMonitor] Skipping non-dir: \(dirURL.lastPathComponent)")
+                continue
+            }
 
             // Skip "memory" directories
             if dirURL.lastPathComponent == "memory" { continue }
@@ -95,7 +107,13 @@ final class SessionMonitor {
                 at: dirURL,
                 includingPropertiesForKeys: [.contentModificationDateKey],
                 options: .skipsHiddenFiles
-            ) else { continue }
+            ) else {
+                print("[SessionMonitor] contentsOfDirectory FAILED for \(dirURL.lastPathComponent)")
+                continue
+            }
+
+            let jsonlFiles = files.filter { $0.pathExtension == "jsonl" }
+            print("[SessionMonitor] \(dirURL.lastPathComponent): \(files.count) entries, \(jsonlFiles.count) jsonl")
 
             for fileURL in files {
                 // Extension filter: excludes directories (subagents/) and non-JSONL files.
