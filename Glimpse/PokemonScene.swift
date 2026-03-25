@@ -7,6 +7,7 @@ final class PokemonScene: SKScene {
     private let sessionMonitor = SessionMonitor()
     private var characterNodes: [String: CharacterNode] = [:]  // sessionID → node
     private var sessionPaths: [String: String] = [:]  // sessionID → project path
+    private var sessionTtys: [String: String] = [:]  // sessionID → tty (e.g. "/dev/ttys004")
     private var departingNodes: Set<String> = []  // sessions currently fading out
 
     /// Empty-state label shown when no sessions are active.
@@ -53,6 +54,11 @@ final class PokemonScene: SKScene {
     }
 
     override func willMove(from view: SKView) {
+        stopMonitoring()
+    }
+
+    /// Explicitly stop the session monitor. Safe to call multiple times.
+    func stopMonitoring() {
         sessionMonitor.stop()
     }
 
@@ -78,11 +84,12 @@ final class PokemonScene: SKScene {
         for session in sessions {
             guard !departingNodes.contains(session.id) else { continue }
             if let existing = characterNodes[session.id] {
-                // Update activity, topic, live log, and idle duration
+                // Update activity, topic, live log, idle duration, and tty
                 existing.updateActivity(session.activity)
                 existing.updateTopic(session.topic)
                 existing.updateLastOutput(session.lastOutput)
                 existing.updateIdleDuration(session.idleDuration)
+                if let tty = session.tty { sessionTtys[session.id] = tty }
             } else {
                 // New session — create character
                 let node = CharacterNode(
@@ -95,6 +102,7 @@ final class PokemonScene: SKScene {
                 node.updateLastOutput(session.lastOutput)
                 node.updateIdleDuration(session.idleDuration)
                 sessionPaths[session.id] = session.projectPath
+                if let tty = session.tty { sessionTtys[session.id] = tty }
                 node.onActivate = { [weak self] in
                     self?.activateTerminal(for: session.id)
                 }
@@ -120,6 +128,7 @@ final class PokemonScene: SKScene {
                 node.removeFromParent()
                 self?.characterNodes.removeValue(forKey: id)
                 self?.sessionPaths.removeValue(forKey: id)
+                self?.sessionTtys.removeValue(forKey: id)
                 self?.departingNodes.remove(id)
                 self?.relayout()
             }
@@ -237,40 +246,54 @@ final class PokemonScene: SKScene {
     // MARK: - App Activation
 
     /// Find the application that hosts the Claude session and bring it to front.
-    /// Also focuses the specific window/tab if running in iTerm2.
+    /// Uses the session's tty to find the exact iTerm2 window/tab.
     private func activateTerminal(for sessionID: String) {
         guard let projectPath = sessionPaths[sessionID] else { return }
+        let tty = sessionTtys[sessionID]
 
-        // Find a "claude" process whose cwd matches this project
-        guard let match = findClaudeProcess(forProjectPath: projectPath) else {
-            NSLog("[Glimpse] No app found for '%@'", projectPath)
+        // Find the GUI app that owns this claude process
+        guard let appPID = findGUIAppForSession(projectPath: projectPath, tty: tty) else {
+            NSLog("[Glimpse] No app found for session %@", sessionID.prefix(8).description)
             return
         }
 
-        // Activate the GUI app
-        if let app = NSRunningApplication(processIdentifier: match.appPID) {
-            NSLog("[Glimpse] Activating '%@' (pid %d) for '%@'",
-                  app.localizedName ?? "unknown", match.appPID, projectPath)
+        if let app = NSRunningApplication(processIdentifier: appPID) {
             app.activate(options: [.activateAllWindows])
 
-            // If it's iTerm2, also focus the specific window and tab via tty matching
-            if app.bundleIdentifier == "com.googlecode.iterm2", let tty = match.tty {
+            // If it's iTerm2 and we have a tty, focus the exact tab
+            if app.bundleIdentifier == "com.googlecode.iterm2", let tty = tty {
                 focusITermTab(tty: tty)
             }
         }
     }
 
-    /// Result of finding a claude process.
-    private struct ProcessMatch {
-        let claudePID: pid_t
-        let appPID: pid_t
-        let tty: String?  // e.g. "/dev/ttys004"
-    }
+    /// Find the GUI app PID for a session by walking up the process tree from the claude process on the given tty.
+    private func findGUIAppForSession(projectPath: String, tty: String?) -> pid_t? {
+        // If we have a tty, find the claude PID on that tty directly
+        if let tty = tty {
+            let shortTty = tty.replacingOccurrences(of: "/dev/", with: "")
+            let pipe = Pipe()
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/bin/ps")
+            proc.arguments = ["-t", shortTty, "-o", "pid=,comm="]
+            proc.standardOutput = pipe
+            proc.standardError = FileHandle.nullDevice
+            do { try proc.run(); proc.waitUntilExit() } catch { return nil }
 
-    /// Find a "claude" process with cwd matching the project path,
-    /// then walk up the parent chain to find the GUI application PID.
-    /// Also captures the tty for iTerm2 tab focusing.
-    private func findClaudeProcess(forProjectPath projectPath: String) -> ProcessMatch? {
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let output = String(data: data, encoding: .utf8) else { return nil }
+
+            for line in output.components(separatedBy: .newlines) {
+                let parts = line.trimmingCharacters(in: .whitespaces).components(separatedBy: .whitespaces)
+                if parts.count >= 2, parts.last == "claude", let pid = Int32(parts[0]) {
+                    if let appPID = findParentApp(pid: pid) {
+                        return appPID
+                    }
+                }
+            }
+        }
+
+        // Fallback: search all claude processes by cwd
         let pgrepPipe = Pipe()
         let pgrep = Process()
         pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
@@ -282,14 +305,11 @@ final class PokemonScene: SKScene {
         let pgrepData = pgrepPipe.fileHandleForReading.readDataToEndOfFile()
         guard let pgrepOutput = String(data: pgrepData, encoding: .utf8) else { return nil }
 
-        let claudePIDs = pgrepOutput.components(separatedBy: .newlines)
-            .compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) }
-
-        for pid in claudePIDs {
+        for pidStr in pgrepOutput.components(separatedBy: .newlines) {
+            guard let pid = Int32(pidStr.trimmingCharacters(in: .whitespaces)) else { continue }
             if let cwd = getCwd(pid: pid), cwd == projectPath {
                 if let appPID = findParentApp(pid: pid) {
-                    let tty = getTty(pid: pid)
-                    return ProcessMatch(claudePID: pid, appPID: appPID, tty: tty)
+                    return appPID
                 }
             }
         }

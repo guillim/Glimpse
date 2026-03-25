@@ -8,8 +8,13 @@ final class SessionMonitor {
     /// Activity state for a single Claude Code session.
     enum Activity: Equatable {
         case reading    // Agent is reading files (Read, Glob, Grep tools)
-        case talking    // Agent is outputting a text response
-        case waiting    // Session waiting for human input
+        case writing    // Agent is editing/creating files (Edit, Write tools)
+        case running    // Agent is running shell commands (Bash tool)
+        case thinking   // Agent is reasoning/planning (text output, no tool_use)
+        case spawning   // Agent is launching subagents (Agent tool)
+        case searching  // Agent is searching the web (WebSearch, WebFetch tools)
+        case asking     // Agent asked the user a question (end_turn with question mark or AskUserQuestion)
+        case done       // Agent finished its task (end_turn, no question)
         case sleeping   // Active but idle
     }
 
@@ -22,8 +27,12 @@ final class SessionMonitor {
         let topic: String         // Short summary of current goal (from last user message)
         let lastOutput: String    // Last few lines of assistant output (for live log bubble)
         let lastModified: Date
-        /// True if modified 60s–2min ago (stale tier). PokemonScene uses this to trigger goodbye/fade-out animation.
-        let isStale: Bool
+        /// How long (in seconds) the session has been idle (0 when actively producing output).
+        let idleDuration: TimeInterval
+
+        /// The tty device path of the claude process for this session (e.g. "/dev/ttys004").
+        /// Used for iTerm2 tab focusing. Nil if we couldn't match.
+        let tty: String?
 
         /// Reconstruct the real project path from the encoded directory name.
         /// "-Users-gui-github-background" → "/Users/gui/github/background"
@@ -41,18 +50,25 @@ final class SessionMonitor {
 
     private var timer: Timer?
 
+    /// Cache: sessionID → (fileSize, lastResult) to skip re-parsing unchanged files.
+    /// Confined to `scanQueue` — only accessed from background scans.
+    private var scanCache: [String: (fileSize: UInt64, result: ScanResult)] = [:]
+
+    /// Serial queue for file I/O and JSON parsing — keeps the main thread free.
+    private let scanQueue = DispatchQueue(label: "com.glimpse.session-monitor", qos: .utility)
+
     /// Base directory for Claude Code projects.
     private let claudeProjectsDir: URL = {
         let home = FileManager.default.homeDirectoryForCurrentUser
         return home.appendingPathComponent(".claude/projects", isDirectory: true)
     }()
 
-    /// Start polling every 5 seconds.
+    /// Start polling every 2 seconds.
     func start() {
         stop()
-        // Fire immediately, then every 5s.
+        // Fire immediately, then every 2s.
         scan()
-        timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.scan()
         }
     }
@@ -61,14 +77,20 @@ final class SessionMonitor {
     func stop() {
         timer?.invalidate()
         timer = nil
+        scanQueue.async { [weak self] in
+            self?.scanCache.removeAll()
+        }
     }
 
-    /// One scan cycle: discover sessions, classify activity, notify delegate.
+    /// One scan cycle: file I/O runs on background queue, callback on main.
     private func scan() {
-        // Run synchronously on main thread for reliability.
-        // File I/O is fast enough for ~10 project dirs with tail-reads.
-        let sessions = discoverSessions()
-        onUpdate?(sessions)
+        scanQueue.async { [weak self] in
+            guard let self = self else { return }
+            let sessions = self.discoverSessions()
+            DispatchQueue.main.async {
+                self.onUpdate?(sessions)
+            }
+        }
     }
 
     /// Discover all active sessions across all projects.
@@ -85,8 +107,11 @@ final class SessionMonitor {
 
         var sessions: [Session] = []
         let now = Date()
-        let activeThreshold: TimeInterval = 60     // 60 seconds → active tier
-        let staleThreshold: TimeInterval  = 120    // 2 minutes  → stale tier (dead beyond this)
+
+        // Build map of active sessions from the PID registry (~/.claude/sessions/*.json).
+        // Includes PID, tty, and cwd for each running session.
+        let sessionProcesses = Self.activeSessionProcesses()
+        let activeSessionIDs = Set(sessionProcesses.keys)
 
         for dirURL in projectDirs {
             let isDir = (try? dirURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
@@ -120,14 +145,20 @@ final class SessionMonitor {
 
                 let age = now.timeIntervalSince(modified)
 
-                // Dead sessions (10+ minutes old) are ignored entirely.
-                guard age < staleThreshold else { continue }
-
-                // Active: < 5 min.  Stale: 5–10 min (PokemonScene triggers goodbye animation).
-                let isStale = age >= activeThreshold
-
                 let sessionID = fileURL.deletingPathExtension().lastPathComponent
-                let result = Self.classifyActivityAndTopic(fileURL: fileURL, lastModified: modified, now: now)
+
+                // Only show sessions with a running Claude process.
+                guard activeSessionIDs.contains(sessionID) else { continue }
+
+                // Skip re-parsing if file size hasn't changed since last scan.
+                let fileSize = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(UInt64.init) ?? 0
+                let result: ScanResult
+                if let cached = scanCache[sessionID], cached.fileSize == fileSize {
+                    result = cached.result
+                } else {
+                    result = Self.classifyActivityAndTopic(fileURL: fileURL, lastModified: modified, now: now)
+                    scanCache[sessionID] = (fileSize: fileSize, result: result)
+                }
 
                 sessions.append(Session(
                     id: sessionID,
@@ -137,10 +168,15 @@ final class SessionMonitor {
                     topic: result.topic,
                     lastOutput: result.lastOutput,
                     lastModified: modified,
-                    isStale: isStale
+                    idleDuration: age,
+                    tty: sessionProcesses[sessionID]?.tty
                 ))
             }
         }
+
+        // Prune cache entries for sessions no longer present.
+        let currentIDs = Set(sessions.map(\.id))
+        scanCache = scanCache.filter { currentIDs.contains($0.key) }
 
         return sessions
     }
@@ -193,6 +229,63 @@ final class SessionMonitor {
         return topic
     }
 
+    /// Read ~/.claude/sessions/*.json to get session IDs of currently running Claude processes.
+    /// Info about a running Claude session process.
+    struct SessionProcess {
+        let pid: Int
+        let sessionId: String
+        let cwd: String
+        let tty: String?  // e.g. "/dev/ttys004"
+    }
+
+    /// Read ~/.claude/sessions/*.json to get running session PIDs, IDs, and resolve their ttys.
+    private static func activeSessionProcesses() -> [String: SessionProcess] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let sessionsDir = home.appendingPathComponent(".claude/sessions", isDirectory: true)
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: sessionsDir,
+            includingPropertiesForKeys: nil,
+            options: .skipsHiddenFiles
+        ) else { return [:] }
+
+        var result: [String: SessionProcess] = [:]
+        for file in files where file.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: file),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let sessionId = json["sessionId"] as? String,
+                  let pid = json["pid"] as? Int,
+                  let cwd = json["cwd"] as? String else { continue }
+
+            // Resolve tty from PID via ps
+            let tty = resolveTty(pid: pid)
+
+            result[sessionId] = SessionProcess(pid: pid, sessionId: sessionId, cwd: cwd, tty: tty)
+        }
+        return result
+    }
+
+    /// Get active session IDs (convenience wrapper).
+    private static func activeSessionIDs() -> Set<String> {
+        Set(activeSessionProcesses().keys)
+    }
+
+    /// Resolve the tty of a process via ps.
+    private static func resolveTty(pid: Int) -> String? {
+        let pipe = Pipe()
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/ps")
+        proc.arguments = ["-o", "tty=", "-p", "\(pid)"]
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        do { try proc.run(); proc.waitUntilExit() } catch { return nil }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else { return nil }
+        let tty = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !tty.isEmpty, tty != "??" else { return nil }
+        return tty.hasPrefix("/dev/") ? tty : "/dev/\(tty)"
+    }
+
     struct ScanResult {
         let activity: Activity
         let topic: String
@@ -203,8 +296,6 @@ final class SessionMonitor {
     /// Uses FileHandle to read only the tail of potentially large files.
     static func classifyActivityAndTopic(fileURL: URL, lastModified: Date, now: Date) -> ScanResult {
         let empty = ScanResult(activity: .sleeping, topic: "", lastOutput: "")
-        // If no activity for 2+ minutes, sleeping
-        if now.timeIntervalSince(lastModified) > 120 { return empty }
 
         // Read only the last ~32KB to avoid loading multi-MB session logs entirely.
         let tailBytes = 32 * 1024
@@ -270,39 +361,71 @@ final class SessionMonitor {
             // Skip if we already classified activity
             guard activity == .sleeping else { continue }
 
-            // Check for assistant message with tool use (reading)
+            // Check for assistant end_turn first — this takes priority over content classification.
+            // Distinguish "asking a question" from "finished task".
+            if type == "assistant",
+               let message = json["message"] as? [String: Any],
+               message["stop_reason"] as? String == "end_turn" {
+                // Check if the agent is asking a question
+                var isAsking = false
+                if let blocks = message["content"] as? [[String: Any]] {
+                    for block in blocks {
+                        // AskUserQuestion tool means it's definitely asking
+                        if block["type"] as? String == "tool_use",
+                           block["name"] as? String == "AskUserQuestion" {
+                            isAsking = true
+                            break
+                        }
+                        // Text ending with "?" suggests a question
+                        if block["type"] as? String == "text",
+                           let text = block["text"] as? String,
+                           text.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("?") {
+                            isAsking = true
+                        }
+                    }
+                }
+                activity = isAsking ? .asking : .done
+                continue
+            }
+
+            // Check for assistant message with tool use (active work)
             if type == "assistant",
                let message = json["message"] as? [String: Any],
                let blocks = message["content"] as? [[String: Any]] {
 
-                let readingTools: Set<String> = ["Read", "Glob", "Grep"]
-                for block in blocks {
-                    if block["type"] as? String == "tool_use",
-                       let toolName = block["name"] as? String,
-                       readingTools.contains(toolName) {
+                // Classify by tool_use blocks (priority: Bash > Agent > Web > Write > Read)
+                let toolNames = blocks.compactMap { block -> String? in
+                    guard block["type"] as? String == "tool_use" else { return nil }
+                    return block["name"] as? String
+                }
+
+                if !toolNames.isEmpty {
+                    let toolSet = Set(toolNames)
+                    if toolSet.contains("Bash") {
+                        activity = .running
+                    } else if toolSet.contains("Agent") {
+                        activity = .spawning
+                    } else if !toolSet.isDisjoint(with: ["WebSearch", "WebFetch"]) {
+                        activity = .searching
+                    } else if !toolSet.isDisjoint(with: ["Edit", "Write"]) {
+                        activity = .writing
+                    } else if !toolSet.isDisjoint(with: ["Read", "Glob", "Grep"]) {
                         activity = .reading
+                    } else {
+                        activity = .thinking
+                    }
+                } else {
+                    // Text-only message, no tool_use → thinking
+                    let hasText = blocks.contains { $0["type"] as? String == "text" }
+                    if hasText {
+                        activity = .thinking
                     }
                 }
-
-                if activity == .sleeping {
-                    for block in blocks {
-                        if block["type"] as? String == "text" {
-                            activity = .talking
-                        }
-                    }
-                }
-            }
-
-            // Check for assistant end_turn — waiting for human
-            if activity == .sleeping, type == "assistant",
-               let message = json["message"] as? [String: Any],
-               message["stop_reason"] as? String == "end_turn" {
-                activity = now.timeIntervalSince(lastModified) > 30 ? .waiting : .talking
             }
 
             // User message — session is active, agent is probably processing
             if activity == .sleeping, type == "user" {
-                activity = .talking
+                activity = .thinking
             }
         }
 
