@@ -11,6 +11,7 @@ final class CharacterNode: SKNode {
     private let bodySprite: SKSpriteNode
     private let statusLabel: SKLabelNode
     private let projectLabel: SKLabelNode
+    private let topicLabel: SKLabelNode
     private let helloBubble: SKNode
     private let helloBubbleBG: SKShapeNode
     private let helloText: SKLabelNode
@@ -51,11 +52,21 @@ final class CharacterNode: SKNode {
         // Project name label
         projectLabel = SKLabelNode(fontNamed: "Menlo")
         projectLabel.text = projectName
-        projectLabel.fontSize = max(size * 0.16, 10)
-        projectLabel.fontColor = .init(white: 0.6, alpha: 1)
+        projectLabel.fontSize = max(size * 0.14, 9)
+        projectLabel.fontColor = .init(white: 0.5, alpha: 1)
         projectLabel.position = CGPoint(x: 0, y: -size * 0.6 - 4)
         projectLabel.verticalAlignmentMode = .top
         projectLabel.horizontalAlignmentMode = .center
+
+        // Topic label (below project label)
+        topicLabel = SKLabelNode(fontNamed: "Menlo-Bold")
+        topicLabel.text = ""
+        topicLabel.fontSize = max(size * 0.15, 10)
+        topicLabel.fontColor = .init(white: 0.7, alpha: 1)
+        let topicY: CGFloat = -size * 0.6 - 4 - projectLabel.fontSize - 2
+        topicLabel.position = CGPoint(x: 0, y: topicY)
+        topicLabel.verticalAlignmentMode = .top
+        topicLabel.horizontalAlignmentMode = .center
 
         // Hello bubble (hidden by default)
         helloText = SKLabelNode(fontNamed: "Menlo-Bold")
@@ -85,6 +96,7 @@ final class CharacterNode: SKNode {
         addChild(bodySprite)
         addChild(statusLabel)
         addChild(projectLabel)
+        addChild(topicLabel)
         addChild(helloBubble)
     }
 
@@ -114,6 +126,11 @@ final class CharacterNode: SKNode {
             .run { [weak self] in self?.statusLabel.text = newEmoji },
             .fadeIn(withDuration: 0.15)
         ]))
+    }
+
+    func updateTopic(_ topic: String) {
+        guard topic != topicLabel.text else { return }
+        topicLabel.text = topic
     }
 
     // MARK: - Hello Interaction
@@ -191,5 +208,6 @@ final class CharacterNode: SKNode {
         bodySprite.setScale(s)
         statusLabel.setScale(s)
         projectLabel.setScale(s)
+        topicLabel.setScale(s)
     }
 }

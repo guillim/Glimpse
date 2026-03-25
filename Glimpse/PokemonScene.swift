@@ -76,17 +76,19 @@ final class PokemonScene: SKScene {
         for session in nonStaleSessions {
             guard !departingNodes.contains(session.id) else { continue }
             if let existing = characterNodes[session.id] {
-                // Update activity
+                // Update activity and topic
                 existing.updateActivity(session.activity)
+                existing.updateTopic(session.topic)
             } else {
                 // New session — create character
-                print("[PokemonScene] Creating character for session \(session.id.prefix(8))... project=\(session.projectName)")
+                print("[PokemonScene] Creating character for session \(session.id.prefix(8))... project=\(session.projectName) topic=\(session.topic)")
                 let node = CharacterNode(
                     sessionID: session.id,
                     projectName: session.projectName,
                     size: charSize
                 )
                 node.updateActivity(session.activity)
+                node.updateTopic(session.topic)
                 node.animateAppear()
                 addChild(node)
                 characterNodes[session.id] = node

@@ -18,12 +18,13 @@ final class SessionMonitor {
         let id: String            // JSONL filename (UUID)
         let projectName: String   // Extracted from parent directory name
         let activity: Activity
+        let topic: String         // Short summary of current goal (from last user message)
         let lastModified: Date
-        /// True if modified 5–10 minutes ago (stale tier). PokemonScene uses this to trigger goodbye/fade-out animation.
+        /// True if modified 60s–2min ago (stale tier). PokemonScene uses this to trigger goodbye/fade-out animation.
         let isStale: Bool
 
         static func == (lhs: Session, rhs: Session) -> Bool {
-            lhs.id == rhs.id && lhs.activity == rhs.activity
+            lhs.id == rhs.id && lhs.activity == rhs.activity && lhs.topic == rhs.topic
         }
     }
 
@@ -81,8 +82,8 @@ final class SessionMonitor {
 
         var sessions: [Session] = []
         let now = Date()
-        let activeThreshold: TimeInterval = 5 * 60    // 5 minutes  → active tier
-        let staleThreshold: TimeInterval  = 10 * 60   // 10 minutes → stale tier (dead beyond this)
+        let activeThreshold: TimeInterval = 60     // 60 seconds → active tier
+        let staleThreshold: TimeInterval  = 120    // 2 minutes  → stale tier (dead beyond this)
 
         for dirURL in projectDirs {
             let isDir = (try? dirURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
@@ -128,12 +129,13 @@ final class SessionMonitor {
                 let isStale = age >= activeThreshold
 
                 let sessionID = fileURL.deletingPathExtension().lastPathComponent
-                let activity = Self.classifyActivity(fileURL: fileURL, lastModified: modified, now: now)
+                let (activity, topic) = Self.classifyActivityAndTopic(fileURL: fileURL, lastModified: modified, now: now)
 
                 sessions.append(Session(
                     id: sessionID,
                     projectName: projectName,
                     activity: activity,
+                    topic: topic,
                     lastModified: modified,
                     isStale: isStale
                 ))
@@ -144,21 +146,45 @@ final class SessionMonitor {
     }
 
     /// Extract human-readable project name from encoded directory name.
-    /// "-Users-gui-github-background" → "background"
+    /// "-Users-gui-github-background" → "dir: background"
     static func extractProjectName(from dirName: String) -> String {
         let components = dirName.split(separator: "-").map(String.init)
-        return components.last ?? dirName
+        let name = components.last ?? dirName
+        return "dir: \(name)"
     }
 
-    /// Read last ~10 lines of a JSONL file and classify activity.
+    /// Extract a short topic (1-3 words) from the user's message.
+    /// Takes the first few meaningful words, stripping common prefixes.
+    static func extractTopic(from message: String) -> String {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        // Take first line only
+        let firstLine = trimmed.components(separatedBy: .newlines).first ?? trimmed
+
+        // Split into words, take first 3 meaningful ones
+        let words = firstLine.components(separatedBy: .whitespaces)
+            .filter { !$0.isEmpty }
+            .prefix(4)
+
+        let topic = words.joined(separator: " ")
+
+        // Cap at 30 chars
+        if topic.count > 30 {
+            return String(topic.prefix(27)) + "..."
+        }
+        return topic
+    }
+
+    /// Read last ~10 lines of a JSONL file, classify activity, and extract topic.
     /// Uses FileHandle to read only the tail of potentially large files.
-    static func classifyActivity(fileURL: URL, lastModified: Date, now: Date) -> Activity {
+    static func classifyActivityAndTopic(fileURL: URL, lastModified: Date, now: Date) -> (Activity, String) {
         // If no activity for 2+ minutes, sleeping
-        if now.timeIntervalSince(lastModified) > 120 { return .sleeping }
+        if now.timeIntervalSince(lastModified) > 120 { return (.sleeping, "") }
 
         // Read only the last ~32KB to avoid loading multi-MB session logs entirely.
         let tailBytes = 32 * 1024
-        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return .sleeping }
+        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return (.sleeping, "") }
         defer { try? handle.close() }
 
         let fileSize = handle.seekToEndOfFile()
@@ -166,14 +192,17 @@ final class SessionMonitor {
         handle.seek(toFileOffset: readOffset)
         let data = handle.availableData
         guard let content = String(data: data, encoding: .utf8) else {
-            return .sleeping
+            return (.sleeping, "")
         }
 
-        // Get last ~10 non-empty lines
+        // Get last ~20 non-empty lines (more for topic extraction)
         let lines = content.components(separatedBy: .newlines)
-            .suffix(15)
+            .suffix(30)
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-            .suffix(10)
+            .suffix(20)
+
+        var activity: Activity = .sleeping
+        var topic: String = ""
 
         // Walk backwards to find the most recent meaningful message
         for line in lines.reversed() {
@@ -184,46 +213,60 @@ final class SessionMonitor {
 
             let type = json["type"] as? String
 
+            // Extract topic from the most recent user message (text, not tool results)
+            if topic.isEmpty, type == "user",
+               let message = json["message"] as? [String: Any],
+               let msgContent = message["content"] as? String {
+                topic = Self.extractTopic(from: msgContent)
+            }
+
+            // Also handle user messages with role/content structure
+            if topic.isEmpty, type == "user",
+               let message = json["message"] as? [String: Any],
+               message["role"] as? String == "user",
+               let msgContent = message["content"] as? String {
+                topic = Self.extractTopic(from: msgContent)
+            }
+
+            // Skip if we already classified activity
+            guard activity == .sleeping else { continue }
+
             // Check for assistant message with tool use (reading)
             if type == "assistant",
                let message = json["message"] as? [String: Any],
-               let content = message["content"] as? [[String: Any]] {
+               let blocks = message["content"] as? [[String: Any]] {
 
-                // Check for tool_use blocks — reading tools
                 let readingTools: Set<String> = ["Read", "Glob", "Grep"]
-                for block in content {
+                for block in blocks {
                     if block["type"] as? String == "tool_use",
                        let toolName = block["name"] as? String,
                        readingTools.contains(toolName) {
-                        return .reading
+                        activity = .reading
                     }
                 }
 
-                // Check for text output — talking
-                for block in content {
-                    if block["type"] as? String == "text" {
-                        return .talking
+                if activity == .sleeping {
+                    for block in blocks {
+                        if block["type"] as? String == "text" {
+                            activity = .talking
+                        }
                     }
                 }
             }
 
             // Check for assistant end_turn — waiting for human
-            if type == "assistant",
+            if activity == .sleeping, type == "assistant",
                let message = json["message"] as? [String: Any],
                message["stop_reason"] as? String == "end_turn" {
-                // If last modified > 30s ago, waiting for input
-                if now.timeIntervalSince(lastModified) > 30 {
-                    return .waiting
-                }
-                return .talking  // just finished talking
+                activity = now.timeIntervalSince(lastModified) > 30 ? .waiting : .talking
             }
 
             // User message — session is active, agent is probably processing
-            if type == "user" {
-                return .talking
+            if activity == .sleeping, type == "user" {
+                activity = .talking
             }
         }
 
-        return .sleeping
+        return (activity, topic)
     }
 }
