@@ -8,6 +8,7 @@ final class DesktopWindowController: NSWindowController {
 
     private(set) var sceneViewController: SceneViewController?
     private var skView: SKView?
+    private var notificationObservers: [NSObjectProtocol] = []
 
     convenience init() {
         let screen = NSScreen.main ?? NSScreen.screens[0]
@@ -44,22 +45,30 @@ final class DesktopWindowController: NSWindowController {
     // MARK: - View Swapping
 
     private func setupViewSwapObservers() {
-        NotificationCenter.default.addObserver(
-            forName: .switchToSpriteKit,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let scene = notification.userInfo?["scene"] as? SKScene else { return }
-            self?.swapToSpriteKit(scene: scene)
-        }
+        notificationObservers.append(
+            NotificationCenter.default.addObserver(
+                forName: .switchToSpriteKit,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let scene = notification.userInfo?["scene"] as? SKScene else { return }
+                self?.swapToSpriteKit(scene: scene)
+            }
+        )
 
-        NotificationCenter.default.addObserver(
-            forName: .switchToSceneKit,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.swapToSceneKit()
-        }
+        notificationObservers.append(
+            NotificationCenter.default.addObserver(
+                forName: .switchToSceneKit,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.swapToSceneKit()
+            }
+        )
+    }
+
+    deinit {
+        notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
     private func swapToSpriteKit(scene: SKScene) {
@@ -103,6 +112,7 @@ final class DesktopWindowController: NSWindowController {
         ) { [weak self] _ in
             let visible = window.occlusionState.contains(.visible)
             self?.sceneViewController?.setOccluded(!visible)
+            self?.skView?.isPaused = !visible
         }
     }
 }
