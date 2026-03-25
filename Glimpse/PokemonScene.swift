@@ -6,6 +6,7 @@ final class PokemonScene: SKScene {
 
     private let sessionMonitor = SessionMonitor()
     private var characterNodes: [String: CharacterNode] = [:]  // sessionID → node
+    private var sessionPaths: [String: String] = [:]  // sessionID → project path
     private var departingNodes: Set<String> = []  // sessions currently fading out
 
     /// Empty-state label shown when no sessions are active.
@@ -102,6 +103,10 @@ final class PokemonScene: SKScene {
                 node.updateActivity(session.activity)
                 node.updateTopic(session.topic)
                 node.updateLastOutput(session.lastOutput)
+                sessionPaths[session.id] = session.projectPath
+                node.onActivate = { [weak self] in
+                    self?.activateTerminal(for: session.id)
+                }
                 node.animateAppear()
                 addChild(node)
                 characterNodes[session.id] = node
@@ -124,6 +129,7 @@ final class PokemonScene: SKScene {
             node.animateDisappear { [weak self] in
                 node.removeFromParent()
                 self?.characterNodes.removeValue(forKey: id)
+                self?.sessionPaths.removeValue(forKey: id)
                 self?.departingNodes.remove(id)
                 self?.relayout()
             }
@@ -238,5 +244,84 @@ final class PokemonScene: SKScene {
             }
             focusedCharacterID = nearestID
         }
+    }
+
+    // MARK: - Terminal Activation
+
+    /// Find and bring to front a terminal window running in the session's project directory.
+    private func activateTerminal(for sessionID: String) {
+        guard let projectPath = sessionPaths[sessionID] else { return }
+
+        // Extract the directory name for matching window titles.
+        // Terminal windows typically show the current directory in their title.
+        let dirName = (projectPath as NSString).lastPathComponent
+        print("[PokemonScene] Activating terminal for '\(dirName)' (path: \(projectPath))")
+
+        // Try Terminal.app first, then iTerm2
+        if !activateTerminalApp(matching: dirName) {
+            if !activateITerm(matching: dirName) {
+                print("[PokemonScene] No matching terminal window found for '\(dirName)'")
+            }
+        }
+    }
+
+    /// Search Terminal.app windows for one whose title contains the search string.
+    private func activateTerminalApp(matching search: String) -> Bool {
+        let script = """
+        tell application "System Events"
+            if not (exists process "Terminal") then return false
+        end tell
+        tell application "Terminal"
+            set windowCount to count of windows
+            repeat with i from 1 to windowCount
+                set winName to name of window i
+                if winName contains "\(search)" then
+                    set frontmost to true
+                    set index of window i to 1
+                    activate
+                    return true
+                end if
+            end repeat
+        end tell
+        return false
+        """
+        return runAppleScript(script)
+    }
+
+    /// Search iTerm2 windows for one whose session name/path contains the search string.
+    private func activateITerm(matching search: String) -> Bool {
+        let script = """
+        tell application "System Events"
+            if not (exists process "iTerm2") then return false
+        end tell
+        tell application "iTerm2"
+            repeat with w in windows
+                repeat with t in tabs of w
+                    repeat with s in sessions of t
+                        set sessionName to name of s
+                        if sessionName contains "\(search)" then
+                            select t
+                            set index of w to 1
+                            activate
+                            return true
+                        end if
+                    end repeat
+                end repeat
+            end repeat
+        end tell
+        return false
+        """
+        return runAppleScript(script)
+    }
+
+    private func runAppleScript(_ source: String) -> Bool {
+        guard let script = NSAppleScript(source: source) else { return false }
+        var error: NSDictionary?
+        let result = script.executeAndReturnError(&error)
+        if let err = error {
+            print("[PokemonScene] AppleScript error: \(err)")
+            return false
+        }
+        return result.booleanValue
     }
 }

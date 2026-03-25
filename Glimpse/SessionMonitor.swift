@@ -16,13 +16,20 @@ final class SessionMonitor {
     /// Snapshot of a discovered session.
     struct Session: Equatable {
         let id: String            // JSONL filename (UUID)
-        let projectName: String   // Extracted from parent directory name
+        let projectName: String   // Extracted from parent directory name ("dir: background")
+        let projectDirName: String // Raw encoded dir name for path reconstruction
         let activity: Activity
         let topic: String         // Short summary of current goal (from last user message)
         let lastOutput: String    // Last few lines of assistant output (for live log bubble)
         let lastModified: Date
         /// True if modified 60s–2min ago (stale tier). PokemonScene uses this to trigger goodbye/fade-out animation.
         let isStale: Bool
+
+        /// Reconstruct the real project path from the encoded directory name.
+        /// "-Users-gui-github-background" → "/Users/gui/github/background"
+        var projectPath: String {
+            "/" + projectDirName.split(separator: "-").joined(separator: "/")
+        }
 
         static func == (lhs: Session, rhs: Session) -> Bool {
             lhs.id == rhs.id && lhs.activity == rhs.activity && lhs.topic == rhs.topic
@@ -135,6 +142,7 @@ final class SessionMonitor {
                 sessions.append(Session(
                     id: sessionID,
                     projectName: projectName,
+                    projectDirName: dirURL.lastPathComponent,
                     activity: result.activity,
                     topic: result.topic,
                     lastOutput: result.lastOutput,

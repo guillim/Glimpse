@@ -22,6 +22,11 @@ final class CharacterNode: SKNode {
     /// Whether the hello bubble is currently showing.
     private var isHelloVisible = false
     private var dwellTimer: Timer?
+    private var activateTimer: Timer?
+    private var hasActivated = false
+
+    /// Called when user gazes at this character for 10+ seconds.
+    var onActivate: (() -> Void)?
 
     /// The character size (width & height of the body sprite).
     let characterSize: CGFloat
@@ -105,6 +110,7 @@ final class CharacterNode: SKNode {
 
     deinit {
         dwellTimer?.invalidate()
+        activateTimer?.invalidate()
     }
 
     // MARK: - Status Updates
@@ -168,10 +174,19 @@ final class CharacterNode: SKNode {
 
     /// Call when gaze enters this character's hitbox.
     func gazeEntered() {
-        guard !isHelloVisible else { return }
-        dwellTimer?.invalidate()
-        dwellTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
-            self?.showHello()
+        hasActivated = false
+        if !isHelloVisible {
+            dwellTimer?.invalidate()
+            dwellTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+                self?.showHello()
+            }
+        }
+        // Start 10s activation timer
+        activateTimer?.invalidate()
+        activateTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
+            guard let self = self, !self.hasActivated else { return }
+            self.hasActivated = true
+            self.onActivate?()
         }
     }
 
@@ -179,6 +194,9 @@ final class CharacterNode: SKNode {
     func gazeExited() {
         dwellTimer?.invalidate()
         dwellTimer = nil
+        activateTimer?.invalidate()
+        activateTimer = nil
+        hasActivated = false
         hideHello()
     }
 
