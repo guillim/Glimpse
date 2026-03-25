@@ -137,6 +137,7 @@ final class CharacterNode: SKNode {
 
     func updateActivity(_ activity: SessionMonitor.Activity) {
         guard activity != currentActivity else { return }
+        let previousActivity = currentActivity
         currentActivity = activity
 
         let newEmoji: String
@@ -161,9 +162,23 @@ final class CharacterNode: SKNode {
         ]))
         activityWordLabel.run(.sequence([
             .fadeOut(withDuration: 0.15),
-            .run { [weak self] in self?.activityWordLabel.text = newWord },
+            .run { [weak self] in
+                self?.activityWordLabel.text = newWord
+                if activity == .asking {
+                    self?.activityWordLabel.fontColor = .init(red: 1.0, green: 0.55, blue: 0.0, alpha: 1)
+                } else if previousActivity == .asking {
+                    self?.activityWordLabel.fontColor = .init(white: 0.6, alpha: 1)
+                }
+            },
             .fadeIn(withDuration: 0.15)
         ]))
+
+        // Asking state glow transitions
+        if activity == .asking && previousActivity != .asking {
+            showAskingGlow()
+        } else if activity != .asking && previousActivity == .asking {
+            hideAskingGlow()
+        }
     }
 
     func updateTopic(_ topic: String) {
@@ -454,5 +469,6 @@ final class CharacterNode: SKNode {
         activityWordLabel.setScale(s)
         projectLabel.setScale(s)
         topicLabel.setScale(s)
+        glowNode?.setScale(s)
     }
 }
