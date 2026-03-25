@@ -90,6 +90,10 @@ final class CharacterNode: SKNode {
 
     required init?(coder: NSCoder) { fatalError("Not implemented") }
 
+    deinit {
+        dwellTimer?.invalidate()
+    }
+
     // MARK: - Status Updates
 
     func updateActivity(_ activity: SessionMonitor.Activity) {
@@ -185,5 +189,7 @@ final class CharacterNode: SKNode {
         let s = newSize / characterSize
         bodySprite.setScale(s)
         statusLabel.setScale(s)
+        projectLabel.setScale(s)
+        helloBubble.setScale(s)
     }
 }
