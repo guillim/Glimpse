@@ -12,7 +12,7 @@ final class PokemonScene: SKScene {
     /// Empty-state label shown when no sessions are active.
     private let emptyLabel: SKLabelNode = {
         let label = SKLabelNode(fontNamed: "Menlo")
-        label.text = "No Claude sessions active — start one to see your Pokemon!"
+        label.text = "No Claude sessions active — start one to see your agent!"
         label.fontSize = 16
         label.fontColor = .init(white: 0.4, alpha: 1)
         label.verticalAlignmentMode = .center
@@ -297,7 +297,8 @@ final class PokemonScene: SKScene {
         let pipe = Pipe()
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        proc.arguments = ["-p", "\(pid)", "-Fn", "-d", "cwd"]
+        // IMPORTANT: -a ANDs the filters. Without it, -p and -d are ORed (returns all processes' cwd).
+        proc.arguments = ["-a", "-p", "\(pid)", "-d", "cwd", "-Fn"]
         proc.standardOutput = pipe
         proc.standardError = FileHandle.nullDevice
         do { try proc.run(); proc.waitUntilExit() } catch { return nil }
