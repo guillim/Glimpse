@@ -9,6 +9,7 @@ final class CharacterNode: SKNode {
     let projectName: String
 
     private let bodySprite: SKSpriteNode
+    private let cardBG: SKShapeNode
     private let statusLabel: SKLabelNode
     private let activityWordLabel: SKLabelNode
     private let projectLabel: SKLabelNode
@@ -49,6 +50,15 @@ final class CharacterNode: SKNode {
         }
         texture.filteringMode = .nearest  // pixel art — no smoothing
         bodySprite = SKSpriteNode(texture: texture, size: CGSize(width: size, height: size))
+
+        // Card background behind character
+        let cardW = size * 1.6
+        let cardH = size * 1.8
+        cardBG = SKShapeNode(rectOf: CGSize(width: cardW, height: cardH), cornerRadius: 8)
+        cardBG.fillColor = .init(red: 0.1, green: 0.1, blue: 0.15, alpha: 0.7)
+        cardBG.strokeColor = .init(red: 0.3, green: 0.3, blue: 0.4, alpha: 0.4)
+        cardBG.lineWidth = 1
+        cardBG.zPosition = -2
 
         // Status icon label (emoji-based for simplicity)
         statusLabel = SKLabelNode(text: "💤")
@@ -111,6 +121,7 @@ final class CharacterNode: SKNode {
 
         super.init()
 
+        addChild(cardBG)
         addChild(bodySprite)
         addChild(statusLabel)
         addChild(activityWordLabel)
@@ -386,6 +397,7 @@ final class CharacterNode: SKNode {
     /// Skips helloBubble to avoid conflicting with its show/hide animations.
     func rescale(to newSize: CGFloat) {
         let s = newSize / characterSize
+        cardBG.setScale(s)
         bodySprite.setScale(s)
         statusLabel.setScale(s)
         activityWordLabel.setScale(s)
