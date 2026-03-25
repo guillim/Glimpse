@@ -223,20 +223,47 @@ final class CharacterNode: SKNode {
 
     // MARK: - Lifecycle Animations
 
+    /// Subtle idle breathing — body gently scales up and down.
+    private func startBreathing() {
+        let breathe = SKAction.sequence([
+            .scaleY(to: 1.03, duration: 1.8),
+            .scaleY(to: 0.97, duration: 1.8)
+        ])
+        bodySprite.run(.repeatForever(breathe), withKey: "breathing")
+
+        // Slight vertical bob on the whole node
+        let bob = SKAction.sequence([
+            .moveBy(x: 0, y: 2, duration: 1.8),
+            .moveBy(x: 0, y: -2, duration: 1.8)
+        ])
+        bodySprite.run(.repeatForever(bob), withKey: "bobbing")
+    }
+
+    private func stopBreathing() {
+        bodySprite.removeAction(forKey: "breathing")
+        bodySprite.removeAction(forKey: "bobbing")
+    }
+
     /// Fade in when a new session appears.
     func animateAppear() {
         alpha = 0
         setScale(0.5)
-        run(.group([
-            .fadeIn(withDuration: 0.5),
-            .scale(to: 1.0, duration: 0.5)
+        run(.sequence([
+            .group([
+                .fadeIn(withDuration: 0.5),
+                .scale(to: 1.0, duration: 0.5)
+            ]),
+            .run { [weak self] in self?.startBreathing() }
         ]))
     }
 
     /// Show "Goodbye!" for 5 seconds, then fade out. Calls completion when done.
     func animateDisappear(completion: @escaping () -> Void) {
+        stopBreathing()
+
         // Show goodbye text in the hello bubble
         helloText.text = "Goodbye!"
+        updateBubbleText("Goodbye!")
         helloBubble.removeAllActions()
         helloBubble.alpha = 1
         helloBubble.setScale(1.0)
