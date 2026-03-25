@@ -12,6 +12,8 @@
 		A1000003 /* HeadTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000003 /* HeadTracker.swift */; };
 		A1000004 /* SceneViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000004 /* SceneViewController.swift */; };
 		A1000005 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000006 /* main.swift */; };
+		A1000006 /* SessionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000007 /* SessionMonitor.swift */; };
+		A1000007 /* CharacterGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000008 /* CharacterGenerator.swift */; };
 		AB000001 /* models in Resources */ = {isa = PBXBuildFile; fileRef = AB000002 /* models */; };
 /* End PBXBuildFile section */
 
@@ -22,6 +24,8 @@
 		A2000004 /* SceneViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneViewController.swift; sourceTree = "<group>"; };
 		A2000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A2000006 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		A2000007 /* SessionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitor.swift; sourceTree = "<group>"; };
+		A2000008 /* CharacterGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterGenerator.swift; sourceTree = "<group>"; };
 		A3000001 /* Glimpse.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Glimpse.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB000002 /* models */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "public/models"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -54,6 +58,8 @@
 				A2000004 /* SceneViewController.swift */,
 				A2000005 /* Info.plist */,
 				A2000006 /* main.swift */,
+				A2000007 /* SessionMonitor.swift */,
+				A2000008 /* CharacterGenerator.swift */,
 			);
 			path = Glimpse;
 			sourceTree = "<group>";
@@ -137,6 +143,8 @@
 				A1000003 /* HeadTracker.swift in Sources */,
 				A1000004 /* SceneViewController.swift in Sources */,
 				A1000005 /* main.swift in Sources */,
+				A1000006 /* SessionMonitor.swift in Sources */,
+				A1000007 /* CharacterGenerator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
