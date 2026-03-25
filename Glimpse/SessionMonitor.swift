@@ -19,6 +19,8 @@ final class SessionMonitor {
         let projectName: String   // Extracted from parent directory name
         let activity: Activity
         let lastModified: Date
+        /// True if modified 5–10 minutes ago (stale tier). PokemonScene uses this to trigger goodbye/fade-out animation.
+        let isStale: Bool
 
         static func == (lhs: Session, rhs: Session) -> Bool {
             lhs.id == rhs.id && lhs.activity == rhs.activity
@@ -76,7 +78,8 @@ final class SessionMonitor {
 
         var sessions: [Session] = []
         let now = Date()
-        let activeThreshold: TimeInterval = 5 * 60   // 5 minutes
+        let activeThreshold: TimeInterval = 5 * 60    // 5 minutes  → active tier
+        let staleThreshold: TimeInterval  = 10 * 60   // 10 minutes → stale tier (dead beyond this)
 
         for dirURL in projectDirs {
             guard (try? dirURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { continue }
@@ -86,6 +89,10 @@ final class SessionMonitor {
 
             let projectName = Self.extractProjectName(from: dirURL.lastPathComponent)
 
+            // Depth-1 scan: only files directly inside the project directory are listed here.
+            // Subagent sessions live in subagents/ subdirectories and are naturally excluded
+            // by this depth-1 scan. The .jsonl extension filter below handles any remaining
+            // non-session entries (e.g. bare directories at depth 1).
             guard let files = try? fm.contentsOfDirectory(
                 at: dirURL,
                 includingPropertiesForKeys: [.contentModificationDateKey],
@@ -93,13 +100,19 @@ final class SessionMonitor {
             ) else { continue }
 
             for fileURL in files {
+                // Extension filter: excludes directories (subagents/) and non-JSONL files.
                 guard fileURL.pathExtension == "jsonl" else { continue }
 
                 guard let attrs = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]),
                       let modified = attrs.contentModificationDate else { continue }
 
-                // Only active sessions (modified in last 5 minutes)
-                guard now.timeIntervalSince(modified) < activeThreshold else { continue }
+                let age = now.timeIntervalSince(modified)
+
+                // Dead sessions (10+ minutes old) are ignored entirely.
+                guard age < staleThreshold else { continue }
+
+                // Active: < 5 min.  Stale: 5–10 min (PokemonScene triggers goodbye animation).
+                let isStale = age >= activeThreshold
 
                 let sessionID = fileURL.deletingPathExtension().lastPathComponent
                 let activity = Self.classifyActivity(fileURL: fileURL, lastModified: modified, now: now)
@@ -108,7 +121,8 @@ final class SessionMonitor {
                     id: sessionID,
                     projectName: projectName,
                     activity: activity,
-                    lastModified: modified
+                    lastModified: modified,
+                    isStale: isStale
                 ))
             }
         }
