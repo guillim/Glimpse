@@ -73,21 +73,16 @@ final class PokemonScene: SKScene {
             triggerDeparture(for: id)
         }
 
-        // Handle stale sessions — treat them as departing
-        for session in sessions where session.isStale {
-            triggerDeparture(for: session.id)
-        }
-
         // Add new or update existing sessions
-        let nonStaleSessions = sessions.filter { !$0.isStale }
-        let charSize = characterSize(for: nonStaleSessions.count)
-        for session in nonStaleSessions {
+        let charSize = characterSize(for: sessions.count)
+        for session in sessions {
             guard !departingNodes.contains(session.id) else { continue }
             if let existing = characterNodes[session.id] {
-                // Update activity, topic, and live log
+                // Update activity, topic, live log, and idle duration
                 existing.updateActivity(session.activity)
                 existing.updateTopic(session.topic)
                 existing.updateLastOutput(session.lastOutput)
+                existing.updateIdleDuration(session.idleDuration)
             } else {
                 // New session — create character
                 let node = CharacterNode(
@@ -98,6 +93,7 @@ final class PokemonScene: SKScene {
                 node.updateActivity(session.activity)
                 node.updateTopic(session.topic)
                 node.updateLastOutput(session.lastOutput)
+                node.updateIdleDuration(session.idleDuration)
                 sessionPaths[session.id] = session.projectPath
                 node.onActivate = { [weak self] in
                     self?.activateTerminal(for: session.id)
@@ -241,31 +237,40 @@ final class PokemonScene: SKScene {
     // MARK: - App Activation
 
     /// Find the application that hosts the Claude session and bring it to front.
-    /// Generic approach: find a process whose cwd matches the project path,
-    /// walk up the process tree to find the GUI app, and activate it.
+    /// Also focuses the specific window/tab if running in iTerm2.
     private func activateTerminal(for sessionID: String) {
         guard let projectPath = sessionPaths[sessionID] else { return }
 
         // Find a "claude" process whose cwd matches this project
-        guard let appPID = findGUIAppPID(forProjectPath: projectPath) else {
+        guard let match = findClaudeProcess(forProjectPath: projectPath) else {
             NSLog("[Glimpse] No app found for '%@'", projectPath)
             return
         }
 
-        // Activate the app by PID
-        if let app = NSRunningApplication(processIdentifier: appPID) {
+        // Activate the GUI app
+        if let app = NSRunningApplication(processIdentifier: match.appPID) {
             NSLog("[Glimpse] Activating '%@' (pid %d) for '%@'",
-                  app.localizedName ?? "unknown", appPID, projectPath)
+                  app.localizedName ?? "unknown", match.appPID, projectPath)
             app.activate(options: [.activateAllWindows])
-        } else {
-            NSLog("[Glimpse] Could not create NSRunningApplication for pid %d", appPID)
+
+            // If it's iTerm2, also focus the specific window and tab via tty matching
+            if app.bundleIdentifier == "com.googlecode.iterm2", let tty = match.tty {
+                focusITermTab(tty: tty)
+            }
         }
+    }
+
+    /// Result of finding a claude process.
+    private struct ProcessMatch {
+        let claudePID: pid_t
+        let appPID: pid_t
+        let tty: String?  // e.g. "/dev/ttys004"
     }
 
     /// Find a "claude" process with cwd matching the project path,
     /// then walk up the parent chain to find the GUI application PID.
-    private func findGUIAppPID(forProjectPath projectPath: String) -> pid_t? {
-        // Use `pgrep -f claude` to find claude processes, then check their cwd
+    /// Also captures the tty for iTerm2 tab focusing.
+    private func findClaudeProcess(forProjectPath projectPath: String) -> ProcessMatch? {
         let pgrepPipe = Pipe()
         let pgrep = Process()
         pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
@@ -280,16 +285,71 @@ final class PokemonScene: SKScene {
         let claudePIDs = pgrepOutput.components(separatedBy: .newlines)
             .compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) }
 
-        // For each claude process, check if its cwd matches the project path
         for pid in claudePIDs {
             if let cwd = getCwd(pid: pid), cwd == projectPath {
-                // Found the claude process. Walk up to the GUI app.
                 if let appPID = findParentApp(pid: pid) {
-                    return appPID
+                    let tty = getTty(pid: pid)
+                    return ProcessMatch(claudePID: pid, appPID: appPID, tty: tty)
                 }
             }
         }
         return nil
+    }
+
+    /// Focus the iTerm2 window and tab that owns the given tty.
+    private func focusITermTab(tty: String) {
+        let script = """
+        tell application "iTerm2"
+            set wc to count of windows
+            repeat with i from 1 to wc
+                set tc to count of tabs of window i
+                repeat with j from 1 to tc
+                    set sc to count of sessions of tab j of window i
+                    repeat with k from 1 to sc
+                        set s to session k of tab j of window i
+                        if tty of s is "\(tty)" then
+                            select tab j of window i
+                            set index of window i to 1
+                            return true
+                        end if
+                    end repeat
+                end repeat
+            end repeat
+        end tell
+        return false
+        """
+        if runAppleScript(script) {
+            NSLog("[Glimpse] Focused iTerm2 tab with tty %@", tty)
+        }
+    }
+
+    /// Get the controlling tty of a process (e.g. "/dev/ttys004").
+    private func getTty(pid: pid_t) -> String? {
+        let pipe = Pipe()
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/ps")
+        proc.arguments = ["-o", "tty=", "-p", "\(pid)"]
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        do { try proc.run(); proc.waitUntilExit() } catch { return nil }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else { return nil }
+        let tty = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !tty.isEmpty, tty != "??" else { return nil }
+        // ps returns "ttys004", iTerm expects "/dev/ttys004"
+        return tty.hasPrefix("/dev/") ? tty : "/dev/\(tty)"
+    }
+
+    private func runAppleScript(_ source: String) -> Bool {
+        guard let script = NSAppleScript(source: source) else { return false }
+        var error: NSDictionary?
+        let result = script.executeAndReturnError(&error)
+        if let err = error {
+            NSLog("[Glimpse] AppleScript error: %@", err.description)
+            return false
+        }
+        return result.booleanValue
     }
 
     /// Get the current working directory of a process.
