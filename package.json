@@ -1,15 +1,5 @@
 {
   "name": "glimpse",
   "version": "1.0.0",
-  "description": "Asset pipeline for Glimpse parallax photo scenes",
-  "scripts": {
-    "slice": "node tools/depth_layer_slicer.js",
-    "register": "node tools/add_assets_to_xcode.js",
-    "process": "npm run slice -- --image $IMAGE --depth $DEPTH --output $OUTPUT --name $NAME --transition ${TRANSITION:-8}"
-  },
-  "examples": {
-    "slice only":    "IMAGE=public/Tahoe.webp DEPTH=public/Tahoe-depth-map.webp OUTPUT=public/layers/Tahoe NAME=tahoe npm run slice",
-    "register only": "OUTPUT=public/layers/Tahoe NAME=Tahoe npm run register",
-    "full pipeline": "IMAGE=public/Tahoe.webp DEPTH=public/Tahoe-depth-map.webp OUTPUT=public/layers/Tahoe NAME=tahoe npm run process"
-  }
+  "description": "Glimpse — interactive 3D desktop for macOS"
 }

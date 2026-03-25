@@ -24,7 +24,7 @@ open Glimpse.xcodeproj
 
 Select **My Mac** as the run destination and press **Run** (⌘R).
 
-Grant camera access when prompted. The app has no Dock icon — it runs silently in the background and replaces your desktop wallpaper with the 3D scene.
+Grant camera access when prompted. The app has no Dock icon — it runs silently in the background and replaces your desktop wallpaper with the 3D scene. A menu bar icon lets you switch themes, import custom models, and quit.
 
 | Shortcut | Action |
 |----------|--------|
@@ -35,57 +35,54 @@ Grant camera access when prompted. The app has no Dock icon — it runs silently
 
 ## Scenes
 
-Ships with built-in scenes:
+Scenes are **auto-discovered** at launch — no code changes needed to add new ones. The app ships with:
 
-| Scene | Type | Description |
-|-------|------|-------------|
-| **Space** | Procedural | Starfield, rotating ringed planet, tumbling asteroid |
-| **Tahoe** | Parallax photo | Depth-sliced photograph of Lake Tahoe |
+| Scene | Description |
+|-------|-------------|
+| **Basketball** | USDZ basketball (default scene) |
+| **Chameleon** | USDZ chameleon |
+| **Chess** | USDZ chess set |
+| **Guitare** | USDZ guitar |
+| **Sea** | USDZ ocean scene |
+| **Tomb** | USDZ tomb sculpture |
+| **Tree** | USDZ tree |
 
-Procedural scenes are generated from SceneKit primitives at runtime — no external assets required. Photo scenes use depth-mapped layers for parallax and are **auto-discovered** at launch — no Swift code changes needed to add new ones (see below).
+3D models are loaded from `public/models/` and rendered with three-point lighting. Head tracking rotates the model to follow your viewpoint.
 
 ---
 
-## Parallax photo layers
+## Custom models
 
-Photos can be converted into multi-layer parallax scenes using a depth map. Each layer is a transparent PNG containing only pixels at a given depth range, stacked at different SceneKit Z positions.
+You can import your own 3D models at runtime via the menu bar: **Theme > Import Custom Model...**
 
-### Step 1 — Add your photo and generate a depth map
+Supported formats: `.usdz`, `.obj`, `.dae`, `.scn`
 
-Drop your source photo into `public/`, then upload it to **[Depth Anything V2 on Hugging Face](https://huggingface.co/spaces/depth-anything/Depth-Anything-V2)** (free, no account required) and save the depth map alongside it:
+Imported models are copied to `~/Library/Application Support/Glimpse/models/` and persist across launches. Custom models can be deleted from the Theme submenu.
 
-```
-public/
-├── MyPhoto.jpg
-└── MyPhoto-depth-map.jpg
-```
+---
 
-Any format supported by [sharp](https://sharp.pixelplumbing.com/) works (JPEG, PNG, WebP, TIFF, AVIF, etc.).
+## Features
 
-### Step 2 — Slice layers
+- **Head tracking** — Real-time face detection via Apple Vision framework at 60 fps, with Kalman filtering and frame-rate-aware exponential smoothing
+- **Off-axis projection** — Physically correct asymmetric frustum that makes the screen behave like a real window
+- **3D model support** — Loads `.usdz`, `.obj`, `.dae`, `.scn` files with head-driven rotation
+- **Scene persistence** — Remembers your last selected scene across launches
+- **Battery awareness** — Automatically throttles to 30 fps on battery power to save energy
+- **Power management** — Pauses rendering and tracking during system sleep, wake, and screensaver
+- **Custom model import** — Import and delete your own 3D models from the menu bar
+- **Menu bar control** — Theme picker with checkmarks, scene cycling, and quit
 
-```bash
-cd tools && npm install && cd ..
+---
 
-IMAGE=public/MyPhoto.jpg \
-DEPTH=public/MyPhoto-depth-map.jpg \
-OUTPUT=public/layers/MyPhoto \
-NAME=myphoto \
-npm run process
-```
+## Technical priorities
 
-This slices the image into depth layers inside `public/layers/MyPhoto/`. The `layers/` folder is added to Xcode as a **folder reference** — any new scene folder you add is automatically included in the build.
+Any change to the head tracking or rendering pipeline **must** preserve these two priorities, in order:
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `LAYERS` | `5` | Number of depth layers (`3`–`6`) |
-| `TRANSITION` | `8` | Alpha blend width in depth-value units |
+1. **Smoothness** — The parallax animation must be perfectly fluid with zero visible frame jumps. A "frame jump" is any discontinuity where the camera position snaps between two frames rather than gliding. This is the #1 priority because frame jumps look like bugs and break the illusion entirely. Every filtering, prediction, and rendering decision should be evaluated against this constraint first.
 
-### Step 3 — Build and run
+2. **Latency** — The delay between a physical head movement and the corresponding on-screen camera shift should be as low as possible. Lower latency makes the parallax feel "real" and connected to the user's body. However, latency reduction must never come at the cost of smoothness — a slightly laggy but perfectly smooth animation is always preferable to a low-latency but jittery one.
 
-That's it. Rebuild (⌘R) and press `Ctrl+S` to cycle to the new scene.
-
-Parallax scenes are **auto-discovered** at launch: the app scans `layers/` in the bundle for subdirectories containing PNGs matching the `{name}_layer_01_*` convention, parses Z positions from filenames (or reads the `{name}_layers.json` manifest), and builds the scene automatically. No Xcode project changes or Swift code changes required.
+When these two goals conflict, smoothness wins.
 
 ---
 
@@ -93,15 +90,18 @@ Parallax scenes are **auto-discovered** at launch: the app scans `layers/` in th
 
 - [x] Desktop-level window (behind Finder icons, above wallpaper, below all apps)
 - [x] Real-time head tracking via Apple Vision (no third-party deps)
-- [x] Low-pass smoothing + depth estimation from face bounding box
-- [x] Procedural space scene (SceneKit, no assets)
-- [x] Parallax photo scenes via depth-sliced layers
+- [x] Kalman filtering + depth estimation from face bounding box
+- [x] 3D model scenes with head-driven rotation
 - [x] Scene cycling at runtime (`Ctrl+S`)
 - [x] No Dock icon, silent background process
 - [x] Global keyboard shortcuts
 - [x] Status bar icon with theme picker
+- [x] Scene persistence across launches
+- [x] Custom model import and deletion
+- [x] Auto-throttle on battery power
+- [x] System sleep/wake and screensaver pause
 - [ ] Multi-monitor support
 - [ ] Settings panel (sensitivity, depth intensity, FOV)
-- [ ] Auto-pause during fullscreen apps
 - [ ] Launch at login
-- [ ] Camera selection (multiple webcams)
+- [ ] Smooth scene transitions
+- [ ] Thumbnail previews in theme menu

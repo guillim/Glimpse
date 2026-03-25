@@ -1,4 +1,5 @@
 import AppKit
+import IOKit.ps
 import SceneKit
 
 /// Hosts a SceneKit scene and offsets the camera based on head tracking data.
@@ -9,33 +10,39 @@ final class SceneViewController: NSViewController {
     private let cameraNode = SCNNode()
 
     // How many scene units the camera shifts per unit of head movement
-    private let lateralScale: Float   = 4.0
-    private let verticalScale: Float  = 3.0
-    private let depthScale: Float     = 2.0
+    // at the default camera distance (20). Actual displacement is scaled
+    // proportionally to currentCameraZ so close cameras don't overshoot.
+    private let baseLateralScale: Float   = 4.0
+    private let baseVerticalScale: Float  = 3.0
+    private let baseScaleRefZ: Float      = 20.0   // reference distance for the above
 
     // 3D model rotation driven by head tracking
     private var modelNode: SCNNode?
-    private var modelBaseScale: Float = 1.0
     private let modelMaxRotY: Float = 15.0 * .pi / 180.0   // ±15°
     private let modelMaxRotX: Float = 10.0 * .pi / 180.0   // ±10°
 
-    // Neutral camera position
+    // Neutral camera position (default; overridden per-scene by SceneEntry)
     private let basePosition = SCNVector3(0, 0, 20)
+    private var currentCameraX: Float = 0
+    private var currentCameraY: Float = 0
+    private var currentCameraZ: Float = 20
 
     // Render-side exponential smoothing — guarantees smooth frame-to-frame
-    // transitions regardless of tracking noise. Lower = smoother but laggier.
-    private let smoothingFactor: Float = 0.15
+    // transitions regardless of tracking noise.
+    // tau = time constant in seconds. At 120Hz: factor ≈ 0.15, at 60Hz: ≈ 0.28.
+    // Frame-rate-aware so smoothing feels identical on any display.
+    private let smoothingTau: Float = 0.05   // 50ms — ~90% convergence in 150ms
     private var smoothedX: Float = 0
     private var smoothedY: Float = 0
-    private var smoothedZ: Float = 1
+    private var lastRenderTime: TimeInterval = 0
 
     // Off-axis projection parameters.
     // The virtual screen sits at z = 0 — everything behind it (negative z) appears
     // "through the window."  screenHalfH is chosen so that at the default eye
     // distance (20 units) the vertical field of view matches the previous 70°.
     private let screenZ: Float = 0
-    private let screenHalfH: Float = 20.0 * tan(35.0 * .pi / 180.0)   // ≈ 14.0
-    private let nearClip: Float  = 1.0
+    private let fovHalfAngle: Float = 35.0 * .pi / 180.0   // 70° vertical FOV
+    private let nearClip: Float  = 0.1
     private let farClip: Float   = 500.0
     private var viewAspect: Float = 16.0 / 9.0
 
@@ -44,13 +51,26 @@ final class SceneViewController: NSViewController {
     struct SceneEntry {
         let id: String
         let displayName: String
+        /// Per-scene neutral camera position offset.
+        let cameraX: Float
+        let cameraY: Float
+        let cameraZ: Float
         fileprivate let builder: () -> SCNScene
+
+        init(id: String, displayName: String, cameraX: Float = 0, cameraY: Float = 0, cameraZ: Float = 20, builder: @escaping () -> SCNScene) {
+            self.id = id
+            self.displayName = displayName
+            self.cameraX = cameraX
+            self.cameraY = cameraY
+            self.cameraZ = cameraZ
+            self.builder = builder
+        }
     }
 
-    /// All available scenes — procedural (hardcoded) + parallax (auto-discovered from bundle).
+    /// All available scenes — 3D models auto-discovered from bundle + custom imports.
     private(set) var availableScenes: [SceneEntry] = []
 
-    private var currentIndex: Int = 0
+    private(set) var currentSceneIndex: Int = 0
 
     /// Persistent directory for user-imported custom models.
     static let customModelsDirectory: URL = {
@@ -65,29 +85,6 @@ final class SceneViewController: NSViewController {
     private var currentScene: SCNScene?
 
     private func discoverScenes() {
-        // Auto-discover parallax scenes from bundle's layers/ folder.
-        // Convention: layers/{SceneName}/ contains {basename}_layer_01_*.png files.
-        guard let layersURL = Bundle.main.resourceURL?.appendingPathComponent("layers") else { return }
-        guard let sceneDirs = try? FileManager.default.contentsOfDirectory(
-            at: layersURL, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles
-        ) else { return }
-
-        for dirURL in sceneDirs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            guard (try? dirURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { continue }
-            let files = (try? FileManager.default.contentsOfDirectory(atPath: dirURL.path)) ?? []
-
-            // Find the base name from the first _layer_01_ file
-            guard let marker = files.first(where: { $0.contains("_layer_01_") && $0.hasSuffix(".png") }),
-                  let range = marker.range(of: "_layer_01_") else { continue }
-            let baseName = String(marker[..<range.lowerBound])
-            let displayName = dirURL.lastPathComponent.prefix(1).uppercased() + dirURL.lastPathComponent.dropFirst()
-            let sceneDir = dirURL
-
-            availableScenes.append(SceneEntry(id: baseName, displayName: displayName) { [weak self] in
-                self?.makeParallaxScene(baseName: baseName, directory: sceneDir) ?? SCNScene()
-            })
-        }
-
         // Auto-discover 3D model files from bundle's models/ folder.
         if let modelsURL = Bundle.main.resourceURL?.appendingPathComponent("models") {
             discoverModels(in: modelsURL)
@@ -96,9 +93,39 @@ final class SceneViewController: NSViewController {
         // Auto-discover user-imported custom models from Application Support.
         discoverModels(in: Self.customModelsDirectory, idPrefix: "custom_")
 
-        // Default to first scene
-        currentIndex = 0
+        // Restore last-used scene, fall back to basketball, then first scene.
+        if let savedID = UserDefaults.standard.string(forKey: "selectedSceneID"),
+           let idx = availableScenes.firstIndex(where: { $0.id == savedID }) {
+            currentSceneIndex = idx
+        } else {
+            currentSceneIndex = availableScenes.firstIndex(where: { $0.id == "model_basketball" }) ?? 0
+        }
     }
+
+    /// Per-scene configuration for camera distance, model size, and placement.
+    private struct SceneConfig {
+        var cameraX: Float    = 0     // lateral offset of neutral camera position
+        var cameraY: Float    = 0     // vertical offset of neutral camera position
+        var cameraZ: Float    = 20    // camera distance from origin
+        var modelSize: Float  = 12    // target bounding-box size in scene units
+        var modelZ: Float     = -5    // model Z position (negative = behind window plane)
+    }
+
+    /// Overrides for specific scenes. Scenes not listed use SceneConfig defaults.
+    private static let sceneConfigs: [String: SceneConfig] = [
+        "model_sea": SceneConfig(
+            cameraZ: 0.5,        // nearly inside the scene
+            modelSize: 80,       // fill the entire viewport and beyond
+            modelZ: -10          // model center closer to camera
+        ),
+        "model_tree": SceneConfig(
+            cameraX: 3,
+            cameraY: 4,
+            cameraZ: 2,
+            modelSize: 80,
+            modelZ: -20
+        ),
+    ]
 
     private func discoverModels(in directory: URL, idPrefix: String = "model_") {
         let supportedExts: Set<String> = ["usdz", "obj", "dae", "scn"]
@@ -110,8 +137,10 @@ final class SceneViewController: NSViewController {
             let name = fileURL.deletingPathExtension().lastPathComponent
             let displayName = name.prefix(1).uppercased() + name.dropFirst()
             let url = fileURL
-            availableScenes.append(SceneEntry(id: "\(idPrefix)\(name)", displayName: displayName) { [weak self] in
-                self?.makeModelScene(fileURL: url) ?? SCNScene()
+            let sceneID = "\(idPrefix)\(name)"
+            let config = Self.sceneConfigs[sceneID] ?? SceneConfig()
+            availableScenes.append(SceneEntry(id: sceneID, displayName: displayName, cameraX: config.cameraX, cameraY: config.cameraY, cameraZ: config.cameraZ) { [weak self] in
+                self?.makeModelScene(fileURL: url, config: config) ?? SCNScene()
             })
         }
     }
@@ -166,13 +195,16 @@ final class SceneViewController: NSViewController {
     }
 
     func cycleScene() {
-        let next = (currentIndex + 1) % availableScenes.count
+        let next = (currentSceneIndex + 1) % availableScenes.count
         switchToScene(index: next)
     }
 
     func switchToScene(index: Int) {
         guard index < availableScenes.count else { return }
-        currentIndex = index
+        currentSceneIndex = index
+
+        // Persist the selection so it survives relaunch.
+        UserDefaults.standard.set(availableScenes[index].id, forKey: "selectedSceneID")
 
         // Release the previous scene and its textures before building the new one.
         modelNode = nil
@@ -182,8 +214,41 @@ final class SceneViewController: NSViewController {
         let entry = availableScenes[index]
         let scene = entry.builder()
         currentScene = scene
+        currentCameraX = entry.cameraX
+        currentCameraY = entry.cameraY
+        currentCameraZ = entry.cameraZ
+        cameraNode.position = SCNVector3(CGFloat(entry.cameraX), CGFloat(entry.cameraY), CGFloat(entry.cameraZ))
         scene.rootNode.addChildNode(cameraNode)
         sceneView.scene = scene
+    }
+
+    /// Removes a custom model from disk and the scene list. Returns true if removed.
+    func deleteCustomModel(at index: Int) -> Bool {
+        guard index < availableScenes.count else { return false }
+        let entry = availableScenes[index]
+        guard entry.id.hasPrefix("custom_") else { return false }
+
+        // Delete the file from Application Support.
+        let name = String(entry.id.dropFirst("custom_".count))
+        let supportedExts = ["usdz", "obj", "dae", "scn"]
+        for ext in supportedExts {
+            let url = Self.customModelsDirectory.appendingPathComponent("\(name).\(ext)")
+            if FileManager.default.fileExists(atPath: url.path) {
+                try? FileManager.default.removeItem(at: url)
+                break
+            }
+        }
+
+        availableScenes.remove(at: index)
+
+        // If we deleted the active scene, switch to the first available.
+        if currentSceneIndex == index {
+            switchToScene(index: 0)
+        } else if currentSceneIndex > index {
+            currentSceneIndex -= 1
+        }
+
+        return true
     }
 
     // MARK: - View lifecycle
@@ -195,6 +260,7 @@ final class SceneViewController: NSViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupScene()
+        setupPowerSourceMonitoring()
         setupHeadTracking()
     }
 
@@ -221,135 +287,12 @@ final class SceneViewController: NSViewController {
         cameraNode.camera?.zFar  = Double(farClip)
         cameraNode.position = basePosition
 
-        switchToScene(index: currentIndex)
-    }
-
-    // MARK: - Layer manifest
-
-    private struct LayerManifestEntry: Decodable {
-        let file: String
-        let label: String
-        let z: Int
-    }
-
-    /// Generic parallax photo scene built from depth-sliced PNG layers.
-    ///
-    /// If a `{baseName}_layers.json` manifest exists, uses trim metadata to
-    /// create smaller planes positioned correctly — saving RAM.
-    /// Falls back to filename-based discovery when no manifest is present.
-    private func makeParallaxScene(baseName: String, directory: URL) -> SCNScene {
-        let scene = SCNScene()
-
-        // Try manifest first; fall back to filename-based discovery.
-        let layers: [(file: String, z: CGFloat)]
-
-        let manifestURL = directory.appendingPathComponent("\(baseName)_layers.json")
-        if let data = try? Data(contentsOf: manifestURL),
-           let entries = try? JSONDecoder().decode([LayerManifestEntry].self, from: data) {
-            layers = entries
-                .map { (file: $0.file, z: CGFloat($0.z)) }
-                .sorted { $0.z < $1.z }
-        } else {
-            // Fallback: discover layers from filenames
-            let allFiles = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
-            let prefix = "\(baseName)_layer_"
-            var discovered: [(file: String, z: CGFloat)] = []
-            for file in allFiles.sorted() where file.hasPrefix(prefix) && file.hasSuffix(".png") {
-                let stem = String(file.dropLast(4))
-                let parts = stem.split(separator: "_")
-                if let zPart = parts.first(where: { $0.hasPrefix("z") && $0.count > 1 }),
-                   let zVal = Int(zPart.dropFirst()) {
-                    discovered.append((file: file, z: CGFloat(-zVal)))
-                }
-            }
-            layers = discovered.sorted { $0.z < $1.z }
-        }
-
-        guard !layers.isEmpty else {
-            print("Warning: no layers found for parallax scene '\(baseName)' in \(directory.path)")
-            return scene
-        }
-
-        let fovVertical = Float(70.0 * Double.pi / 180.0)
-        let tanHalfFov  = CGFloat(tan(fovVertical / 2.0))
-        let cameraZ: CGFloat = 20.0
-        let overscanFactor: CGFloat = 1.5
-
-        // Pre-load all layer images from the scene directory.
-        var layerImages: [NSImage] = []
-        for entry in layers {
-            let imageURL = directory.appendingPathComponent(entry.file)
-            guard let image = NSImage(contentsOf: imageURL) else {
-                print("Warning: image not found: \(imageURL.path)")
-                layerImages.append(NSImage())
-                continue
-            }
-            layerImages.append(image)
-        }
-
-        // Derive aspect ratio from the first layer image (all layers are full-frame).
-        var origAspect: CGFloat = 16.0 / 9.0
-        if let first = layerImages.first, first.size.height > 0 {
-            origAspect = first.size.width / first.size.height
-        }
-
-        // Background fill plane behind all layers (stretched sky to cover extreme angles).
-        // Reuses the already-loaded sky image to avoid a duplicate ~30-60 MB decode.
-        let skyImage = layerImages[0]
-        if skyImage.size.width > 0 {
-            let fillZ: CGFloat = -200
-            let fillDist = cameraZ - fillZ
-            let fillHeight = 2.0 * fillDist * tanHalfFov * 2.0
-            let fillWidth  = fillHeight * origAspect
-            let fillPlane  = SCNPlane(width: fillWidth, height: fillHeight)
-            let fillMat    = SCNMaterial()
-            fillMat.diffuse.contents    = skyImage
-            fillMat.isDoubleSided       = true
-            fillMat.blendMode           = .alpha
-            fillMat.writesToDepthBuffer = false
-            fillPlane.materials = [fillMat]
-            let fillNode = SCNNode(geometry: fillPlane)
-            fillNode.position    = SCNVector3(0, 0, fillZ)
-            fillNode.renderingOrder = -1
-            scene.rootNode.addChildNode(fillNode)
-        }
-
-        for (index, entry) in layers.enumerated() {
-            let image = layerImages[index]
-            guard image.size.width > 0 else { continue }
-
-            // Full-frame plane dimensions at this Z depth
-            let distance    = cameraZ - entry.z
-            let planeHeight = 2.0 * distance * tanHalfFov * overscanFactor
-            let planeWidth  = planeHeight * origAspect
-
-            let plane = SCNPlane(width: planeWidth, height: planeHeight)
-            let mat = SCNMaterial()
-            mat.diffuse.contents    = image
-            mat.isDoubleSided       = true
-            mat.blendMode           = .alpha
-            mat.writesToDepthBuffer = false
-            plane.materials = [mat]
-
-            let node = SCNNode(geometry: plane)
-            node.position = SCNVector3(0, 0, entry.z)
-            node.renderingOrder = index
-            scene.rootNode.addChildNode(node)
-        }
-
-        // Full-brightness ambient so photo layers render without tint
-        let ambient = SCNNode()
-        ambient.light = SCNLight()
-        ambient.light?.type = .ambient
-        ambient.light?.intensity = 1000
-        scene.rootNode.addChildNode(ambient)
-
-        return scene
+        switchToScene(index: currentSceneIndex)
     }
 
     /// 3D model scene — loads an external model file, centers and scales it,
     /// and rotates it per-frame based on head tracking.
-    private func makeModelScene(fileURL: URL) -> SCNScene {
+    private func makeModelScene(fileURL: URL, config: SceneConfig = SceneConfig()) -> SCNScene {
         let loaded: SCNScene
         do {
             loaded = try SCNScene(url: fileURL, options: [.checkConsistency: true])
@@ -373,20 +316,18 @@ final class SceneViewController: NSViewController {
             (minB.z + maxB.z) / 2
         )
         let maxExtent = max(maxB.x - minB.x, maxB.y - minB.y, maxB.z - minB.z)
-        let targetSize: Float = 12.0
-        let scale = maxExtent > 0 ? targetSize / Float(maxExtent) : 1.0
+        let scale = maxExtent > 0 ? config.modelSize / Float(maxExtent) : 1.0
 
         content.position = SCNVector3(-center.x, -center.y, -center.z)
 
         let wrapper = SCNNode()
         wrapper.addChildNode(content)
         wrapper.scale = SCNVector3(scale, scale, scale)
-        wrapper.position = SCNVector3(0, 0, -5)   // slightly behind the window plane
+        wrapper.position = SCNVector3(0, 0, config.modelZ)
 
         let scene = SCNScene()
         scene.rootNode.addChildNode(wrapper)
         modelNode = wrapper
-        modelBaseScale = scale
 
         // Three-point lighting for good model readability
         let ambient = SCNNode()
@@ -419,6 +360,8 @@ final class SceneViewController: NSViewController {
 
     private var isOccluded = false
     private var isSystemSuspended = false
+    private var isOnBattery = false
+    private var powerSource: Any?
 
     private var shouldRun: Bool { !isOccluded && !isSystemSuspended }
 
@@ -434,10 +377,46 @@ final class SceneViewController: NSViewController {
         updatePowerState()
     }
 
+    private func setupPowerSourceMonitoring() {
+        isOnBattery = !Self.isPluggedIn()
+
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        let loop = IOPSNotificationCreateRunLoopSource({ context in
+            guard let ctx = context else { return }
+            let vc = Unmanaged<SceneViewController>.fromOpaque(ctx).takeUnretainedValue()
+            vc.isOnBattery = !SceneViewController.isPluggedIn()
+            vc.updatePowerState()
+        }, context).takeRetainedValue()
+
+        CFRunLoopAddSource(CFRunLoopGetMain(), loop, .defaultMode)
+        powerSource = loop
+    }
+
+    private static func isPluggedIn() -> Bool {
+        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [Any],
+              !sources.isEmpty else {
+            // Desktop Mac or can't determine — assume plugged in.
+            return true
+        }
+        // Check if any source is charging or on AC.
+        for src in sources {
+            if let desc = IOPSGetPowerSourceDescription(snapshot, src as CFTypeRef)?.takeUnretainedValue() as? [String: Any],
+               let state = desc[kIOPSPowerSourceStateKey] as? String {
+                if state == kIOPSACPowerValue { return true }
+            }
+        }
+        return false
+    }
+
+    private static let batteryFPS = 30
+
     private func updatePowerState() {
         if shouldRun {
             headTracker.start()
             sceneView.isPlaying = true
+            // Throttle frame rate on battery to save energy.
+            sceneView.preferredFramesPerSecond = isOnBattery ? Self.batteryFPS : 0
         } else {
             sceneView.isPlaying = false
             headTracker.stop()
@@ -450,38 +429,44 @@ final class SceneViewController: NSViewController {
         updatePowerState()
     }
 
-    fileprivate func updateCamera(offset: HeadTracker.HeadOffset) {
-        // Exponential moving average: smoothly converge toward the target
-        // position each frame. This eliminates micro-jumps from tracking noise.
-        smoothedX += (offset.x - smoothedX) * smoothingFactor
-        smoothedY += (offset.y - smoothedY) * smoothingFactor
-        smoothedZ += (offset.z - smoothedZ) * smoothingFactor
+    fileprivate func updateCamera(offset: HeadTracker.HeadOffset, time: TimeInterval) {
+        // Frame-rate-aware EMA: compute smoothing factor from elapsed time and
+        // a fixed time constant (tau). This produces identical smoothing behaviour
+        // whether the display runs at 60 Hz, 120 Hz, or anything in between.
+        let dt = Float(lastRenderTime > 0 ? time - lastRenderTime : 1.0 / 120.0)
+        lastRenderTime = time
+        let alpha = 1.0 - exp(-dt / smoothingTau)
 
-        let eyeX = Float(basePosition.x) + smoothedX * lateralScale
-        let eyeY = Float(basePosition.y) + smoothedY * verticalScale
-        let eyeZ = Float(basePosition.z) - (smoothedZ - 1.0) * depthScale
+        smoothedX += (offset.x - smoothedX) * alpha
+        smoothedY += (offset.y - smoothedY) * alpha
 
-        // SCNTransaction implicit animation: SceneKit interpolates between the
-        // current and new values over the duration, acting as a second smoothing
-        // layer on top of the EMA. This guarantees sub-frame interpolation.
+        // Scale lateral/vertical movement proportionally to camera distance.
+        // At cameraZ=20 (default), movement matches the base scales.
+        // At cameraZ=0.5 (sea), movement is 40x smaller — preventing overshoot.
+        let distanceFactor = currentCameraZ / baseScaleRefZ
+        let eyeX = currentCameraX + smoothedX * baseLateralScale * distanceFactor
+        let eyeY = currentCameraY + smoothedY * baseVerticalScale * distanceFactor
+        let eyeZ = currentCameraZ
+
+        // Disable implicit SceneKit animation — we set final values directly
+        // each frame via the EMA. Any implicit animation would add latency.
         SCNTransaction.begin()
-        SCNTransaction.animationDuration = 0.05
-        SCNTransaction.animationTimingFunction = CAMediaTimingFunction(name: .linear)
+        SCNTransaction.disableActions = true
 
         cameraNode.position = SCNVector3(CGFloat(eyeX), CGFloat(eyeY), CGFloat(eyeZ))
 
-        // Off-axis projection: the virtual screen is a fixed rectangle at screenZ.
-        // The frustum is skewed so the screen edges act as a stationary window frame
-        // while the viewpoint (eye) moves.  This produces physically-correct
-        // depth-dependent parallax — the hallmark of the "window" illusion.
+        // Off-axis projection: compute the virtual screen size from the current
+        // camera distance so the FOV stays consistent (~70°) regardless of how
+        // close or far the per-scene cameraZ places us.
         let dist = eyeZ - screenZ
         guard dist > nearClip else {
             SCNTransaction.commit()
             return
         }
 
+        let screenHalfH = dist * tan(fovHalfAngle)
         let halfW = screenHalfH * viewAspect
-        let s     = nearClip / dist          // near-plane / eye-to-screen distance
+        let s     = nearClip / dist
 
         cameraNode.camera?.projectionTransform = Self.offAxisProjection(
             left:   (-halfW      - eyeX) * s,
@@ -503,12 +488,6 @@ final class SceneViewController: NSViewController {
                -curvedX * modelMaxRotY,
                 0
             )
-
-            // Scale model based on depth — closer = bigger, further = smaller.
-            // Clamp to avoid extreme sizes.
-            let depthScale = min(max(smoothedZ, 0.5), 2.0)
-            let s = modelBaseScale * depthScale
-            model.scale = SCNVector3(s, s, s)
         }
 
         SCNTransaction.commit()
@@ -535,6 +514,6 @@ extension SceneViewController: SCNSceneRendererDelegate {
     /// Pulling the latest head offset here instead of via async dispatch
     /// ensures every frame uses the freshest available data with zero scheduling jitter.
     func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
-        updateCamera(offset: headTracker.predictedOffset(atTime: time))
+        updateCamera(offset: headTracker.predictedOffset(atTime: time), time: time)
     }
 }

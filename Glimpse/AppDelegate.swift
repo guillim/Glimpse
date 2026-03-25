@@ -62,11 +62,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let themeItem = NSMenuItem(title: "Theme", action: nil, keyEquivalent: "")
         let themeSubmenu = NSMenu(title: "Theme")
 
-        if let scenes = desktopWindowController?.sceneViewController?.availableScenes {
+        if let svc = desktopWindowController?.sceneViewController {
+            let scenes = svc.availableScenes
             for (tag, entry) in scenes.enumerated() {
                 let item = NSMenuItem(title: entry.displayName, action: #selector(selectScene(_:)), keyEquivalent: "")
                 item.tag = tag
                 item.target = self
+                item.state = (tag == svc.currentSceneIndex) ? .on : .off
+
+                // Custom models get a submenu with a Delete option.
+                if entry.id.hasPrefix("custom_") {
+                    let sub = NSMenu()
+                    let selectItem = NSMenuItem(title: "Select", action: #selector(selectScene(_:)), keyEquivalent: "")
+                    selectItem.tag = tag
+                    selectItem.target = self
+                    sub.addItem(selectItem)
+                    sub.addItem(NSMenuItem.separator())
+                    let deleteItem = NSMenuItem(title: "Delete", action: #selector(deleteScene(_:)), keyEquivalent: "")
+                    deleteItem.tag = tag
+                    deleteItem.target = self
+                    sub.addItem(deleteItem)
+                    item.submenu = sub
+                }
+
                 themeSubmenu.addItem(item)
             }
         }
@@ -88,6 +106,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func selectScene(_ sender: NSMenuItem) {
         desktopWindowController?.sceneViewController?.switchToScene(index: sender.tag)
+        setupMenuBarItem()
+    }
+
+    @objc private func deleteScene(_ sender: NSMenuItem) {
+        let svc = desktopWindowController?.sceneViewController
+        if svc?.deleteCustomModel(at: sender.tag) == true {
+            setupMenuBarItem()
+        }
     }
 
     @objc private func importCustomModel() {
@@ -134,6 +160,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             case "s":
                 // Ctrl+S — cycle to next scene
                 self?.desktopWindowController?.sceneViewController?.cycleScene()
+                self?.setupMenuBarItem()
             default:
                 break
             }
