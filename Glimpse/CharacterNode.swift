@@ -71,19 +71,19 @@ final class CharacterNode: SKNode {
         // Hello bubble (hidden by default)
         helloText = SKLabelNode(fontNamed: "Menlo")
         helloText.text = ""
-        helloText.fontSize = 10
-        helloText.fontColor = .init(white: 0.15, alpha: 1)
+        helloText.fontSize = 11
+        helloText.fontColor = .init(red: 0.85, green: 0.95, blue: 0.85, alpha: 1) // bright green-white, terminal-like
         helloText.verticalAlignmentMode = .center
         helloText.horizontalAlignmentMode = .center
         helloText.numberOfLines = 0
-        helloText.preferredMaxLayoutWidth = 280
+        helloText.preferredMaxLayoutWidth = 300
         helloText.position = CGPoint(x: 0, y: 0)
 
         // Start with a reasonable default bubble size; updated dynamically in updateBubbleText
         helloBubbleBG = SKShapeNode(rectOf: CGSize(width: 100, height: 30), cornerRadius: 6)
-        helloBubbleBG.fillColor = .init(white: 0, alpha: 0.75)
-        helloBubbleBG.strokeColor = .init(white: 0.3, alpha: 0.5)
-        helloBubbleBG.lineWidth = 0.5
+        helloBubbleBG.fillColor = .init(white: 0.08, alpha: 0.92)
+        helloBubbleBG.strokeColor = .init(red: 0.3, green: 0.5, blue: 0.3, alpha: 0.6)
+        helloBubbleBG.lineWidth = 1
 
         helloBubble = SKNode()
         helloBubble.position = CGPoint(x: 0, y: size * 0.55 + 12)
@@ -157,9 +157,9 @@ final class CharacterNode: SKNode {
 
         helloBubbleBG.removeFromParent()
         let newBG = SKShapeNode(rectOf: CGSize(width: bgW, height: bgH), cornerRadius: 6)
-        newBG.fillColor = .init(white: 0, alpha: 0.75)
-        newBG.strokeColor = .init(white: 0.3, alpha: 0.5)
-        newBG.lineWidth = 0.5
+        newBG.fillColor = .init(white: 0.08, alpha: 0.92)
+        newBG.strokeColor = .init(red: 0.3, green: 0.5, blue: 0.3, alpha: 0.6)
+        newBG.lineWidth = 1
         helloBubble.insertChild(newBG, at: 0)
         helloBubbleBG = newBG
     }
