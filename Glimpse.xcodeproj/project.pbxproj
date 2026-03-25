@@ -15,6 +15,7 @@
 		A1000006 /* SessionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000007 /* SessionMonitor.swift */; };
 		A1000007 /* CharacterGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000008 /* CharacterGenerator.swift */; };
 		A1000008 /* CharacterNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000009 /* CharacterNode.swift */; };
+		A1000009 /* PokemonScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000010 /* PokemonScene.swift */; };
 		AB000001 /* models in Resources */ = {isa = PBXBuildFile; fileRef = AB000002 /* models */; };
 /* End PBXBuildFile section */
 
@@ -28,6 +29,7 @@
 		A2000007 /* SessionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitor.swift; sourceTree = "<group>"; };
 		A2000008 /* CharacterGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterGenerator.swift; sourceTree = "<group>"; };
 		A2000009 /* CharacterNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterNode.swift; sourceTree = "<group>"; };
+		A2000010 /* PokemonScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PokemonScene.swift; sourceTree = "<group>"; };
 		A3000001 /* Glimpse.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Glimpse.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB000002 /* models */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "public/models"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -63,6 +65,7 @@
 				A2000007 /* SessionMonitor.swift */,
 				A2000008 /* CharacterGenerator.swift */,
 			A2000009 /* CharacterNode.swift */,
+			A2000010 /* PokemonScene.swift */,
 			);
 			path = Glimpse;
 			sourceTree = "<group>";
@@ -149,6 +152,7 @@
 				A1000006 /* SessionMonitor.swift in Sources */,
 				A1000007 /* CharacterGenerator.swift in Sources */,
 			A1000008 /* CharacterNode.swift in Sources */,
+			A1000009 /* PokemonScene.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
