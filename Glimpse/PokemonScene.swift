@@ -242,15 +242,20 @@ final class PokemonScene: SKScene {
 
     /// Find and bring to front a terminal window running in the session's project directory.
     private func activateTerminal(for sessionID: String) {
-        guard let projectPath = sessionPaths[sessionID] else { return }
+        guard let projectPath = sessionPaths[sessionID] else {
+            NSLog("[Glimpse] activateTerminal: no path for session %@", sessionID.prefix(8).description)
+            return
+        }
 
-        // Extract the directory name for matching window titles.
-        // Terminal windows typically show the current directory in their title.
         let dirName = (projectPath as NSString).lastPathComponent
+        NSLog("[Glimpse] activateTerminal: looking for '%@' (path: %@)", dirName, projectPath)
 
-        // Try Terminal.app first, then iTerm2
-        if !activateTerminalApp(matching: dirName) {
-            _ = activateITerm(matching: dirName)
+        if activateTerminalApp(matching: dirName) {
+            NSLog("[Glimpse] activateTerminal: found Terminal.app window for '%@'", dirName)
+        } else if activateITerm(matching: dirName) {
+            NSLog("[Glimpse] activateTerminal: found iTerm2 window for '%@'", dirName)
+        } else {
+            NSLog("[Glimpse] activateTerminal: no matching window for '%@'", dirName)
         }
     }
 
@@ -307,7 +312,8 @@ final class PokemonScene: SKScene {
         guard let script = NSAppleScript(source: source) else { return false }
         var error: NSDictionary?
         let result = script.executeAndReturnError(&error)
-        if error != nil {
+        if let err = error {
+            NSLog("[Glimpse] AppleScript error: %@", err.description)
             return false
         }
         return result.booleanValue

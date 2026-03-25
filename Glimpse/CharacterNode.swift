@@ -186,6 +186,11 @@ final class CharacterNode: SKNode {
         activateTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
             guard let self = self, !self.hasActivated else { return }
             self.hasActivated = true
+            // Flash the character to indicate activation
+            self.bodySprite.run(.sequence([
+                .colorize(with: .white, colorBlendFactor: 0.8, duration: 0.15),
+                .colorize(withColorBlendFactor: 0, duration: 0.3)
+            ]))
             self.onActivate?()
         }
     }
