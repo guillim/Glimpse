@@ -241,26 +241,147 @@ final class PokemonScene: SKScene {
     // MARK: - Terminal Activation
 
     /// Find and bring to front a terminal window running in the session's project directory.
+    /// Uses tty-based cwd matching: gets each terminal session's tty, checks if the process
+    /// on that tty has a working directory matching the project path.
     private func activateTerminal(for sessionID: String) {
-        guard let projectPath = sessionPaths[sessionID] else {
-            NSLog("[Glimpse] activateTerminal: no path for session %@", sessionID.prefix(8).description)
-            return
-        }
+        guard let projectPath = sessionPaths[sessionID] else { return }
+        NSLog("[Glimpse] activateTerminal: looking for project path '%@'", projectPath)
 
-        let dirName = (projectPath as NSString).lastPathComponent
-        NSLog("[Glimpse] activateTerminal: looking for '%@' (path: %@)", dirName, projectPath)
-
-        if activateTerminalApp(matching: dirName) {
-            NSLog("[Glimpse] activateTerminal: found Terminal.app window for '%@'", dirName)
-        } else if activateITerm(matching: dirName) {
-            NSLog("[Glimpse] activateTerminal: found iTerm2 window for '%@'", dirName)
+        // Try iTerm2 first (user's primary terminal), then Terminal.app
+        if activateITermByCwd(projectPath: projectPath) {
+            NSLog("[Glimpse] Activated iTerm2 session for '%@'", projectPath)
+        } else if activateTerminalAppByCwd(projectPath: projectPath) {
+            NSLog("[Glimpse] Activated Terminal.app window for '%@'", projectPath)
         } else {
-            NSLog("[Glimpse] activateTerminal: no matching window for '%@'", dirName)
+            NSLog("[Glimpse] No terminal found for '%@'", projectPath)
         }
     }
 
-    /// Search Terminal.app windows for one whose title contains the search string.
-    private func activateTerminalApp(matching search: String) -> Bool {
+    /// Find an iTerm2 session whose tty process has cwd matching the project path.
+    private func activateITermByCwd(projectPath: String) -> Bool {
+        // Get all iTerm2 session ttys, check cwd of each via lsof, activate matching one.
+        let script = """
+        tell application "System Events"
+            if not (exists process "iTerm2") then return ""
+        end tell
+        tell application "iTerm2"
+            set result to ""
+            set wc to count of windows
+            repeat with i from 1 to wc
+                set tc to count of tabs of window i
+                repeat with j from 1 to tc
+                    set sc to count of sessions of tab j of window i
+                    repeat with k from 1 to sc
+                        set s to session k of tab j of window i
+                        set t to tty of s
+                        set result to result & t & ":" & i & ":" & j & ":" & k & linefeed
+                    end repeat
+                end repeat
+            end repeat
+            return result
+        end tell
+        """
+
+        guard let ttysScript = NSAppleScript(source: script) else { return false }
+        var error: NSDictionary?
+        let result = ttysScript.executeAndReturnError(&error)
+        if error != nil { return false }
+
+        let ttysString = result.stringValue ?? ""
+        let entries = ttysString.components(separatedBy: .newlines).filter { !$0.isEmpty }
+
+        for entry in entries {
+            let parts = entry.components(separatedBy: ":")
+            guard parts.count >= 4, let tty = parts.first else { continue }
+
+            // Check if a process on this tty has cwd matching our project
+            if ttyHasCwd(tty: tty, projectPath: projectPath) {
+                let winIdx = parts[1]
+                let tabIdx = parts[2]
+                NSLog("[Glimpse] Found match on %@ (window %@, tab %@)", tty, winIdx, tabIdx)
+
+                // Activate this window and tab
+                let activateScript = """
+                tell application "iTerm2"
+                    set index of window \(winIdx) to 1
+                    select tab \(tabIdx) of window 1
+                    activate
+                end tell
+                """
+                _ = runAppleScript(activateScript)
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Check if any process on the given tty has a cwd matching the project path.
+    private func ttyHasCwd(tty: String, projectPath: String) -> Bool {
+        let pipe = Pipe()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        process.arguments = ["+D", tty, "-Fn"]  // This won't work well, use different approach
+        // Instead: find PIDs attached to this tty, then check their cwd
+        let lsofPipe = Pipe()
+        let lsof = Process()
+        lsof.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        lsof.arguments = [tty]
+        lsof.standardOutput = lsofPipe
+        lsof.standardError = FileHandle.nullDevice
+        do {
+            try lsof.run()
+            lsof.waitUntilExit()
+        } catch { return false }
+
+        let data = lsofPipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else { return false }
+
+        // Extract PIDs from lsof output
+        var pids = Set<String>()
+        for line in output.components(separatedBy: .newlines) {
+            let cols = line.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+            if cols.count >= 2, cols[0] != "COMMAND" {
+                pids.insert(cols[1])
+            }
+        }
+
+        // Check cwd of each PID
+        for pid in pids {
+            let cwdPipe = Pipe()
+            let cwdProc = Process()
+            cwdProc.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+            cwdProc.arguments = ["-p", pid, "-Fn"]
+            cwdProc.standardOutput = cwdPipe
+            cwdProc.standardError = FileHandle.nullDevice
+            do {
+                try cwdProc.run()
+                cwdProc.waitUntilExit()
+            } catch { continue }
+
+            let cwdData = cwdPipe.fileHandleForReading.readDataToEndOfFile()
+            guard let cwdOutput = String(data: cwdData, encoding: .utf8) else { continue }
+
+            // lsof -Fn output: lines starting with 'n' are file names
+            // Look for 'cwd' type followed by the path
+            let lines = cwdOutput.components(separatedBy: .newlines)
+            var isCwd = false
+            for line in lines {
+                if line == "fcwd" { isCwd = true; continue }
+                if isCwd && line.hasPrefix("n") {
+                    let path = String(line.dropFirst())
+                    if path == projectPath || projectPath.hasPrefix(path) || path.hasPrefix(projectPath) {
+                        return true
+                    }
+                    isCwd = false
+                }
+            }
+        }
+        return false
+    }
+
+    /// Search Terminal.app windows by checking tty cwd.
+    private func activateTerminalAppByCwd(projectPath: String) -> Bool {
+        let dirName = (projectPath as NSString).lastPathComponent
         let script = """
         tell application "System Events"
             if not (exists process "Terminal") then return false
@@ -269,38 +390,12 @@ final class PokemonScene: SKScene {
             set windowCount to count of windows
             repeat with i from 1 to windowCount
                 set winName to name of window i
-                if winName contains "\(search)" then
+                if winName contains "\(dirName)" then
                     set frontmost to true
                     set index of window i to 1
                     activate
                     return true
                 end if
-            end repeat
-        end tell
-        return false
-        """
-        return runAppleScript(script)
-    }
-
-    /// Search iTerm2 windows for one whose session name/path contains the search string.
-    private func activateITerm(matching search: String) -> Bool {
-        let script = """
-        tell application "System Events"
-            if not (exists process "iTerm2") then return false
-        end tell
-        tell application "iTerm2"
-            repeat with w in windows
-                repeat with t in tabs of w
-                    repeat with s in sessions of t
-                        set sessionName to name of s
-                        if sessionName contains "\(search)" then
-                            select t
-                            set index of w to 1
-                            activate
-                            return true
-                        end if
-                    end repeat
-                end repeat
             end repeat
         end tell
         return false

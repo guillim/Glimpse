@@ -121,10 +121,14 @@ final class CharacterNode: SKNode {
 
         let newEmoji: String
         switch activity {
-        case .reading:  newEmoji = "📖"
-        case .talking:  newEmoji = "💬"
-        case .waiting:  newEmoji = "❓"
-        case .sleeping: newEmoji = "💤"
+        case .reading:   newEmoji = "📖"
+        case .writing:   newEmoji = "✏️"
+        case .running:   newEmoji = "⚡"
+        case .thinking:  newEmoji = "🧠"
+        case .spawning:  newEmoji = "🐣"
+        case .searching: newEmoji = "🔍"
+        case .waiting:   newEmoji = "❓"
+        case .sleeping:  newEmoji = "💤"
         }
 
         // Crossfade the status icon
@@ -186,11 +190,7 @@ final class CharacterNode: SKNode {
         activateTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
             guard let self = self, !self.hasActivated else { return }
             self.hasActivated = true
-            // Flash the character to indicate activation
-            self.bodySprite.run(.sequence([
-                .colorize(with: .white, colorBlendFactor: 0.8, duration: 0.15),
-                .colorize(withColorBlendFactor: 0, duration: 0.3)
-            ]))
+            self.showActivationEffect()
             self.onActivate?()
         }
     }
@@ -223,6 +223,50 @@ final class CharacterNode: SKNode {
         helloBubble.run(.group([
             .fadeOut(withDuration: 0.3),
             .scale(to: 0.8, duration: 0.3)
+        ]))
+    }
+
+    // MARK: - Activation Effect
+
+    /// Big obvious visual effect when the 10s gaze dwell activates the terminal.
+    private func showActivationEffect() {
+        // Expanding ring
+        let ring = SKShapeNode(circleOfRadius: characterSize * 0.4)
+        ring.strokeColor = .init(red: 0.3, green: 1, blue: 0.5, alpha: 1)
+        ring.lineWidth = 3
+        ring.fillColor = .clear
+        ring.zPosition = 50
+        addChild(ring)
+
+        ring.run(.sequence([
+            .group([
+                .scale(to: 2.5, duration: 0.6),
+                .fadeOut(withDuration: 0.6)
+            ]),
+            .removeFromParent()
+        ]))
+
+        // Second ring with delay
+        let ring2 = SKShapeNode(circleOfRadius: characterSize * 0.4)
+        ring2.strokeColor = .init(red: 0.3, green: 1, blue: 0.5, alpha: 0.7)
+        ring2.lineWidth = 2
+        ring2.fillColor = .clear
+        ring2.zPosition = 50
+        addChild(ring2)
+
+        ring2.run(.sequence([
+            .wait(forDuration: 0.15),
+            .group([
+                .scale(to: 2.5, duration: 0.6),
+                .fadeOut(withDuration: 0.6)
+            ]),
+            .removeFromParent()
+        ]))
+
+        // Flash the body bright
+        bodySprite.run(.sequence([
+            .colorize(with: .init(red: 0.3, green: 1, blue: 0.5, alpha: 1), colorBlendFactor: 0.6, duration: 0.1),
+            .colorize(withColorBlendFactor: 0, duration: 0.5)
         ]))
     }
 
