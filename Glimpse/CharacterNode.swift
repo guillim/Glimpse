@@ -197,7 +197,7 @@ final class CharacterNode: SKNode {
                 if activity == .asking {
                     self?.activityWordLabel.fontColor = .init(red: 1.0, green: 0.55, blue: 0.0, alpha: 1)
                 } else if previousActivity == .asking {
-                    self?.activityWordLabel.fontColor = .init(white: 0.6, alpha: 1)
+                    self?.activityWordLabel.fontColor = .init(red: 0.63, green: 0.63, blue: 0.69, alpha: 1)
                 }
             },
             .fadeIn(withDuration: 0.15)
@@ -285,6 +285,7 @@ final class CharacterNode: SKNode {
         glow.zPosition = -1
         glow.alpha = 0
         addChild(glow)
+        glow.position = bodySprite.position
         glowNode = glow
 
         // Fade in, then start pulsing
@@ -385,6 +386,8 @@ final class CharacterNode: SKNode {
         bodySprite.setScale(s)
         statusLabel.setScale(s)
         activityWordLabel.setScale(s)
+        dividerNode.setScale(s)
+        folderPrefixLabel.setScale(s)
         projectLabel.setScale(s)
         topicLabel.setScale(s)
         glowNode?.setScale(s)
