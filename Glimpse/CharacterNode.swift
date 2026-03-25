@@ -10,6 +10,7 @@ final class CharacterNode: SKNode {
 
     private let bodySprite: SKSpriteNode
     private let statusLabel: SKLabelNode
+    private let activityWordLabel: SKLabelNode
     private let projectLabel: SKLabelNode
     private let topicLabel: SKLabelNode
     private let helloBubble: SKNode
@@ -19,13 +20,19 @@ final class CharacterNode: SKNode {
     /// Track current status to avoid redundant updates.
     private(set) var currentActivity: SessionMonitor.Activity = .sleeping
 
+    /// Formatted idle duration text (e.g. "2min", "1h30m"), nil when not idle.
+    private var idleDurationText: String?
+
     /// Whether the hello bubble is currently showing.
     private var isHelloVisible = false
     private var dwellTimer: Timer?
     private var activateTimer: Timer?
+    private var countdownTimer: Timer?
+    private var countdownValue: Int = 3
     private var hasActivated = false
+    private var isCountingDown = false
 
-    /// Called when user gazes at this character for 10+ seconds.
+    /// Called when user gazes at this character long enough to trigger redirect.
     var onActivate: (() -> Void)?
 
     /// The character size (width & height of the body sprite).
@@ -53,6 +60,15 @@ final class CharacterNode: SKNode {
         statusLabel.position = CGPoint(x: size * 0.4, y: size * 0.35)
         statusLabel.verticalAlignmentMode = .center
         statusLabel.horizontalAlignmentMode = .center
+
+        // Activity word label (above the emoji)
+        activityWordLabel = SKLabelNode(fontNamed: "Menlo-Bold")
+        activityWordLabel.text = "idle"
+        activityWordLabel.fontSize = max(size * 0.12, 8)
+        activityWordLabel.fontColor = .init(white: 0.6, alpha: 1)
+        activityWordLabel.position = CGPoint(x: size * 0.4, y: size * 0.35 + size * 0.2)
+        activityWordLabel.verticalAlignmentMode = .center
+        activityWordLabel.horizontalAlignmentMode = .center
 
         // Project name label
         projectLabel = SKLabelNode(fontNamed: "Menlo")
@@ -101,6 +117,7 @@ final class CharacterNode: SKNode {
 
         addChild(bodySprite)
         addChild(statusLabel)
+        addChild(activityWordLabel)
         addChild(projectLabel)
         addChild(topicLabel)
         addChild(helloBubble)
@@ -111,6 +128,7 @@ final class CharacterNode: SKNode {
     deinit {
         dwellTimer?.invalidate()
         activateTimer?.invalidate()
+        countdownTimer?.invalidate()
     }
 
     // MARK: - Status Updates
@@ -120,21 +138,27 @@ final class CharacterNode: SKNode {
         currentActivity = activity
 
         let newEmoji: String
+        let newWord: String
         switch activity {
-        case .reading:   newEmoji = "📖"
-        case .writing:   newEmoji = "✏️"
-        case .running:   newEmoji = "⚡"
-        case .thinking:  newEmoji = "🧠"
-        case .spawning:  newEmoji = "🐣"
-        case .searching: newEmoji = "🔍"
-        case .waiting:   newEmoji = "❓"
-        case .sleeping:  newEmoji = "💤"
+        case .reading:   newEmoji = "📖"; newWord = "read"
+        case .writing:   newEmoji = "✏️"; newWord = "write"
+        case .running:   newEmoji = "⚡"; newWord = "run"
+        case .thinking:  newEmoji = "🧠"; newWord = "think"
+        case .spawning:  newEmoji = "🐣"; newWord = "spawn"
+        case .searching: newEmoji = "🔍"; newWord = "search"
+        case .waiting:   newEmoji = "❓"; newWord = "wait"
+        case .sleeping:  newEmoji = "💤"; newWord = idleDurationText ?? "idle"
         }
 
-        // Crossfade the status icon
+        // Crossfade the status icon and word
         statusLabel.run(.sequence([
             .fadeOut(withDuration: 0.15),
             .run { [weak self] in self?.statusLabel.text = newEmoji },
+            .fadeIn(withDuration: 0.15)
+        ]))
+        activityWordLabel.run(.sequence([
+            .fadeOut(withDuration: 0.15),
+            .run { [weak self] in self?.activityWordLabel.text = newWord },
             .fadeIn(withDuration: 0.15)
         ]))
     }
@@ -142,6 +166,29 @@ final class CharacterNode: SKNode {
     func updateTopic(_ topic: String) {
         guard topic != topicLabel.text else { return }
         topicLabel.text = topic
+    }
+
+    /// Update the idle duration and refresh the activity word label if sleeping.
+    func updateIdleDuration(_ seconds: TimeInterval) {
+        let newText = Self.formatIdleDuration(seconds)
+        guard newText != idleDurationText else { return }
+        idleDurationText = newText
+        // If currently sleeping, update the word label live
+        if currentActivity == .sleeping {
+            activityWordLabel.text = newText ?? "idle"
+        }
+    }
+
+    /// Format idle duration into a compact string: "30s", "2min", "1h30m".
+    private static func formatIdleDuration(_ seconds: TimeInterval) -> String? {
+        guard seconds >= 30 else { return nil }
+        let totalSeconds = Int(seconds)
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        if hours > 0 {
+            return minutes > 0 ? "\(hours)h\(minutes)m" : "\(hours)h"
+        }
+        return "\(minutes)min"
     }
 
     /// Update the live log text shown in the bubble on gaze.
@@ -185,13 +232,11 @@ final class CharacterNode: SKNode {
                 self?.showHello()
             }
         }
-        // Start 10s activation timer
+        // Start 3s timer before showing countdown
         activateTimer?.invalidate()
         activateTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
             guard let self = self, !self.hasActivated else { return }
-            self.hasActivated = true
-            self.showActivationEffect()
-            self.onActivate?()
+            self.startCountdown()
         }
     }
 
@@ -201,6 +246,7 @@ final class CharacterNode: SKNode {
         dwellTimer = nil
         activateTimer?.invalidate()
         activateTimer = nil
+        cancelCountdown()
         hasActivated = false
         hideHello()
     }
@@ -226,48 +272,56 @@ final class CharacterNode: SKNode {
         ]))
     }
 
-    // MARK: - Activation Effect
+    // MARK: - Countdown & Activation
 
-    /// Big obvious visual effect when the 10s gaze dwell activates the terminal.
-    private func showActivationEffect() {
-        // Expanding ring
-        let ring = SKShapeNode(circleOfRadius: characterSize * 0.4)
-        ring.strokeColor = .init(red: 0.3, green: 1, blue: 0.5, alpha: 1)
-        ring.lineWidth = 3
-        ring.fillColor = .clear
-        ring.zPosition = 50
-        addChild(ring)
+    /// Start the 3-2-1 countdown. Replaces the log bubble with the warning.
+    private func startCountdown() {
+        guard !isCountingDown else { return }
+        isCountingDown = true
+        countdownValue = 3
+        showCountdownText()
 
-        ring.run(.sequence([
-            .group([
-                .scale(to: 2.5, duration: 0.6),
-                .fadeOut(withDuration: 0.6)
-            ]),
-            .removeFromParent()
-        ]))
+        countdownTimer?.invalidate()
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            self.countdownValue -= 1
+            if self.countdownValue <= 0 {
+                self.countdownTimer?.invalidate()
+                self.countdownTimer = nil
+                self.isCountingDown = false
+                self.hasActivated = true
+                self.onActivate?()
+                // Restore the log bubble after redirect
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    guard let self = self, self.isHelloVisible else { return }
+                    self.updateBubbleText(self.lastOutput)
+                }
+            } else {
+                self.showCountdownText()
+            }
+        }
+    }
 
-        // Second ring with delay
-        let ring2 = SKShapeNode(circleOfRadius: characterSize * 0.4)
-        ring2.strokeColor = .init(red: 0.3, green: 1, blue: 0.5, alpha: 0.7)
-        ring2.lineWidth = 2
-        ring2.fillColor = .clear
-        ring2.zPosition = 50
-        addChild(ring2)
+    private func showCountdownText() {
+        let msg = "Redirecting to this agent in \(countdownValue)..."
+        updateBubbleText(msg)
+        // Change bubble style to warning (orange tint)
+        helloBubbleBG.fillColor = .init(red: 0.15, green: 0.08, blue: 0.0, alpha: 0.92)
+        helloBubbleBG.strokeColor = .init(red: 0.8, green: 0.5, blue: 0.1, alpha: 0.8)
+        helloText.fontColor = .init(red: 1.0, green: 0.85, blue: 0.5, alpha: 1)
+    }
 
-        ring2.run(.sequence([
-            .wait(forDuration: 0.15),
-            .group([
-                .scale(to: 2.5, duration: 0.6),
-                .fadeOut(withDuration: 0.6)
-            ]),
-            .removeFromParent()
-        ]))
-
-        // Flash the body bright
-        bodySprite.run(.sequence([
-            .colorize(with: .init(red: 0.3, green: 1, blue: 0.5, alpha: 1), colorBlendFactor: 0.6, duration: 0.1),
-            .colorize(withColorBlendFactor: 0, duration: 0.5)
-        ]))
+    /// Cancel the countdown and restore the log bubble.
+    private func cancelCountdown() {
+        guard isCountingDown else { return }
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+        isCountingDown = false
+        // Restore bubble style
+        helloText.fontColor = .init(red: 0.85, green: 0.95, blue: 0.85, alpha: 1)
+        if isHelloVisible {
+            updateBubbleText(lastOutput)
+        }
     }
 
     // MARK: - Lifecycle Animations
@@ -333,6 +387,7 @@ final class CharacterNode: SKNode {
         let s = newSize / characterSize
         bodySprite.setScale(s)
         statusLabel.setScale(s)
+        activityWordLabel.setScale(s)
         projectLabel.setScale(s)
         topicLabel.setScale(s)
     }
