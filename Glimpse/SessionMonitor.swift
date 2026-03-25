@@ -56,13 +56,10 @@ final class SessionMonitor {
 
     /// One scan cycle: discover sessions, classify activity, notify delegate.
     private func scan() {
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let self = self else { return }
-            let sessions = self.discoverSessions()
-            DispatchQueue.main.async {
-                self.onUpdate?(sessions)
-            }
-        }
+        // Run synchronously on main thread for reliability.
+        // File I/O is fast enough for ~10 project dirs with tail-reads.
+        let sessions = discoverSessions()
+        onUpdate?(sessions)
     }
 
     /// Discover all active sessions across all projects.

@@ -41,27 +41,36 @@ final class DesktopWindowController: NSWindowController {
 
         win.contentViewController = vc
         win.setFrame(screen.frame, display: false)
-
         self.sceneViewController = vc
     }
 
     override func showWindow(_ sender: Any?) {
         window?.orderFrontRegardless()
         setupOcclusionObserver()
+
+        // If Pokemon theme was selected during init, the swap couldn't run
+        // properly because the view hierarchy wasn't laid out yet.
+        // Re-trigger it now that the window is visible and properly sized.
+        if let svc = sceneViewController, svc.pokemonScene != nil {
+            print("[DesktopWindowController] Re-triggering SpriteKit swap after window show")
+            svc.switchToScene(index: svc.currentSceneIndex)
+        }
     }
 
     // MARK: - View Swapping
 
     private func swapToSpriteKit(scene: SKScene) {
-        print("[DesktopWindowController] swapToSpriteKit called")
         guard let window = window else {
             print("[DesktopWindowController] swapToSpriteKit — no window!")
             return
         }
 
-        // Create SKView if needed
+        let frame = window.frame
+        print("[DesktopWindowController] swapToSpriteKit — window.frame=\(frame)")
+
+        // Create SKView sized to the WINDOW frame (not contentView which may be zero during init)
         if skView == nil {
-            let sv = SKView(frame: window.contentView?.bounds ?? window.frame)
+            let sv = SKView(frame: CGRect(origin: .zero, size: frame.size))
             sv.autoresizingMask = [.width, .height]
             sv.allowsTransparency = false
             sv.preferredFramesPerSecond = 60
@@ -69,16 +78,22 @@ final class DesktopWindowController: NSWindowController {
         }
 
         guard let sv = skView else { return }
+
+        // Ensure proper frame before presenting scene
+        sv.frame = CGRect(origin: .zero, size: frame.size)
         sv.presentScene(scene)
 
-        // Swap: hide the SceneKit content, overlay SKView
+        // Hide SCNView, show SKView. Add SKView directly to window's
+        // themeFrame view (not contentView, which IS the SceneViewController's view).
         sceneViewController?.view.isHidden = true
         if sv.superview == nil {
-            window.contentView?.addSubview(sv)
+            // Add as sibling of contentView, not child
+            if let contentView = window.contentView {
+                contentView.superview?.addSubview(sv)
+            }
         }
         sv.isHidden = false
-        sv.frame = window.contentView?.bounds ?? window.frame
-        print("[DesktopWindowController] SKView frame: \(sv.frame), scene size: \(scene.size)")
+        print("[DesktopWindowController] SKView frame: \(sv.frame), scene.size: \(scene.size)")
     }
 
     private func swapToSceneKit() {

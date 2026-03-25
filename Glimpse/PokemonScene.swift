@@ -46,6 +46,13 @@ final class PokemonScene: SKScene {
         sessionMonitor.stop()
     }
 
+    override func didChangeSize(_ oldSize: CGSize) {
+        super.didChangeSize(oldSize)
+        emptyLabel.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        print("[PokemonScene] didChangeSize: \(oldSize) → \(size)")
+        relayout()
+    }
+
     // MARK: - Session Updates
 
     private func handleSessionUpdate(_ sessions: [SessionMonitor.Session]) {

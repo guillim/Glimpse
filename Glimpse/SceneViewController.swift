@@ -86,7 +86,7 @@ final class SceneViewController: NSViewController {
     // Holds only the active scene. Previous scene is released so its
     // decoded textures (~30-60 MB each) don't linger in RAM.
     private var currentScene: SCNScene?
-    private var pokemonScene: PokemonScene?
+    private(set) var pokemonScene: PokemonScene?
 
     /// Closures called by switchToScene for view swapping (set by DesktopWindowController).
     var onSwitchToSpriteKit: ((SKScene) -> Void)?
@@ -132,13 +132,6 @@ final class SceneViewController: NSViewController {
             cameraZ: 0.5,        // nearly inside the scene
             modelSize: 80,       // fill the entire viewport and beyond
             modelZ: -10          // model center closer to camera
-        ),
-        "model_tree": SceneConfig(
-            cameraX: 3,
-            cameraY: 4,
-            cameraZ: 2,
-            modelSize: 80,
-            modelZ: -20
         ),
     ]
 
@@ -230,7 +223,8 @@ final class SceneViewController: NSViewController {
             sceneView.scene = nil
             sceneView.isPlaying = false
 
-            let sceneSize = view.bounds.size.width > 0 ? view.bounds.size : (NSScreen.main?.frame.size ?? CGSize(width: 1920, height: 1080))
+            // Always use screen size — view.bounds may be zero during init
+            let sceneSize = NSScreen.main?.frame.size ?? CGSize(width: 1920, height: 1080)
             let pokemon = PokemonScene(size: sceneSize)
             pokemon.scaleMode = .resizeFill
             pokemon.headTracker = headTracker
