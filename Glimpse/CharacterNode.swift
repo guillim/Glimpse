@@ -13,6 +13,8 @@ final class CharacterNode: SKNode {
     private var glowNode: SKShapeNode?
     private let statusLabel: SKLabelNode
     private let activityWordLabel: SKLabelNode
+    private let dividerNode: SKShapeNode
+    private let folderPrefixLabel: SKLabelNode
     private let projectLabel: SKLabelNode
     private let topicLabel: SKLabelNode
     private let helloBubble: SKNode
@@ -24,14 +26,6 @@ final class CharacterNode: SKNode {
 
     /// Formatted idle duration text (e.g. "2min", "1h30m"), nil when not idle.
     private var idleDurationText: String?
-
-    /// Whether the hello bubble is currently showing.
-    private var isHelloVisible = false
-    private var hasActivated = false
-    private var isCountingDown = false
-
-    /// Called when user gazes at this character long enough to trigger redirect.
-    var onActivate: (() -> Void)?
 
     /// The character size (width & height of the body sprite).
     let characterSize: CGFloat
@@ -53,68 +47,102 @@ final class CharacterNode: SKNode {
         bodySprite = SKSpriteNode(texture: texture, size: CGSize(width: size, height: size))
 
         // Card background behind character
-        let cardW = size * 1.6
-        let cardH = size * 1.8
+        let cardW = size * 2.0
+        let cardH = size * 2.6
         cardBG = SKShapeNode(rectOf: CGSize(width: cardW, height: cardH), cornerRadius: 8)
         cardBG.fillColor = .init(red: 0.1, green: 0.1, blue: 0.15, alpha: 0.7)
         cardBG.strokeColor = .init(red: 0.3, green: 0.3, blue: 0.4, alpha: 0.4)
         cardBG.lineWidth = 1
         cardBG.zPosition = -2
 
-        // Status icon label (emoji-based for simplicity)
+        // Sprite in upper portion of card
+        let spriteY = cardH * 0.15
+        bodySprite.position = CGPoint(x: 0, y: spriteY)
+
+        // Status row: emoji + activity word centered below sprite
+        let statusY = spriteY - size * 0.5 - size * 0.15
         statusLabel = SKLabelNode(text: "💤")
-        statusLabel.fontSize = size * 0.3
-        statusLabel.position = CGPoint(x: size * 0.4, y: size * 0.35)
+        statusLabel.fontSize = size * 0.25
+        statusLabel.position = CGPoint(x: -size * 0.15, y: statusY)
         statusLabel.verticalAlignmentMode = .center
         statusLabel.horizontalAlignmentMode = .center
 
-        // Activity word label (above the emoji)
         activityWordLabel = SKLabelNode(fontNamed: "Menlo-Bold")
         activityWordLabel.text = "idle"
-        activityWordLabel.fontSize = max(size * 0.12, 8)
-        activityWordLabel.fontColor = .init(white: 0.6, alpha: 1)
-        activityWordLabel.position = CGPoint(x: size * 0.4, y: size * 0.35 + size * 0.2)
+        activityWordLabel.fontSize = max(size * 0.13, 9)
+        activityWordLabel.fontColor = .init(red: 0.63, green: 0.63, blue: 0.69, alpha: 1)
+        activityWordLabel.position = CGPoint(x: size * 0.15, y: statusY)
         activityWordLabel.verticalAlignmentMode = .center
-        activityWordLabel.horizontalAlignmentMode = .center
+        activityWordLabel.horizontalAlignmentMode = .left
 
-        // Project name label
+        // Divider line between status row and project info
+        let dividerY = statusY - size * 0.18
+        let dividerPath = CGMutablePath()
+        dividerPath.move(to: CGPoint(x: -cardW * 0.35, y: 0))
+        dividerPath.addLine(to: CGPoint(x: cardW * 0.35, y: 0))
+        dividerNode = SKShapeNode(path: dividerPath)
+        dividerNode.strokeColor = .init(red: 0.3, green: 0.3, blue: 0.4, alpha: 0.3)
+        dividerNode.lineWidth = 1
+        dividerNode.position = CGPoint(x: 0, y: dividerY)
+
+        // Project label: "folder:" prefix (dim) + project name (brighter)
+        let projectFontSize = max(size * 0.12, 8)
+        let projectY = dividerY - size * 0.12
+
+        folderPrefixLabel = SKLabelNode(fontNamed: "Menlo")
+        folderPrefixLabel.text = "folder:"
+        folderPrefixLabel.fontSize = projectFontSize
+        folderPrefixLabel.fontColor = .init(red: 0.35, green: 0.35, blue: 0.42, alpha: 1)
+        folderPrefixLabel.verticalAlignmentMode = .center
+        folderPrefixLabel.horizontalAlignmentMode = .right
+
         projectLabel = SKLabelNode(fontNamed: "Menlo")
-        projectLabel.text = projectName
-        projectLabel.fontSize = max(size * 0.14, 9)
-        projectLabel.fontColor = .init(white: 0.5, alpha: 1)
-        projectLabel.position = CGPoint(x: 0, y: -size * 0.6 - 4)
-        projectLabel.verticalAlignmentMode = .top
-        projectLabel.horizontalAlignmentMode = .center
+        let truncatedName = projectName.count > 15
+            ? String(projectName.prefix(14)) + "…"
+            : projectName
+        projectLabel.text = truncatedName
+        projectLabel.fontSize = projectFontSize
+        projectLabel.fontColor = .init(red: 0.5, green: 0.5, blue: 0.56, alpha: 1)
+        projectLabel.verticalAlignmentMode = .center
+        projectLabel.horizontalAlignmentMode = .left
 
-        // Topic label (below project label)
+        // Position prefix and name as a centered pair with 3pt gap
+        let prefixWidth = folderPrefixLabel.frame.width
+        let nameWidth = projectLabel.frame.width
+        let totalWidth = prefixWidth + 3 + nameWidth
+        folderPrefixLabel.position = CGPoint(x: -totalWidth / 2 + prefixWidth, y: projectY)
+        projectLabel.position = CGPoint(x: -totalWidth / 2 + prefixWidth + 3, y: projectY)
+
+        // Topic label (below project label, up to 3 lines)
         topicLabel = SKLabelNode(fontNamed: "Menlo-Bold")
         topicLabel.text = ""
-        topicLabel.fontSize = max(size * 0.15, 10)
-        topicLabel.fontColor = .init(white: 0.7, alpha: 1)
-        let topicY: CGFloat = -size * 0.6 - 4 - projectLabel.fontSize - 2
+        topicLabel.fontSize = max(size * 0.13, 9)
+        topicLabel.fontColor = .init(red: 0.7, green: 0.7, blue: 0.78, alpha: 1)
+        topicLabel.numberOfLines = 3
+        topicLabel.preferredMaxLayoutWidth = cardW - 20
+        let topicY = projectY - projectFontSize - 4
         topicLabel.position = CGPoint(x: 0, y: topicY)
         topicLabel.verticalAlignmentMode = .top
         topicLabel.horizontalAlignmentMode = .center
 
-        // Hello bubble (hidden by default)
+        // Hello bubble (used for goodbye animation)
         helloText = SKLabelNode(fontNamed: "Menlo")
         helloText.text = ""
         helloText.fontSize = 11
-        helloText.fontColor = .init(red: 0.85, green: 0.95, blue: 0.85, alpha: 1) // bright green-white, terminal-like
+        helloText.fontColor = .init(red: 0.85, green: 0.95, blue: 0.85, alpha: 1)
         helloText.verticalAlignmentMode = .center
         helloText.horizontalAlignmentMode = .center
         helloText.numberOfLines = 0
         helloText.preferredMaxLayoutWidth = 300
         helloText.position = CGPoint(x: 0, y: 0)
 
-        // Start with a reasonable default bubble size; updated dynamically in updateBubbleText
         helloBubbleBG = SKShapeNode(rectOf: CGSize(width: 100, height: 30), cornerRadius: 6)
         helloBubbleBG.fillColor = .init(white: 0.08, alpha: 0.92)
         helloBubbleBG.strokeColor = .init(red: 0.3, green: 0.5, blue: 0.3, alpha: 0.6)
         helloBubbleBG.lineWidth = 1
 
         helloBubble = SKNode()
-        helloBubble.position = CGPoint(x: 0, y: size * 0.55 + 12)
+        helloBubble.position = CGPoint(x: 0, y: spriteY + size * 0.55 + 12)
         helloBubble.addChild(helloBubbleBG)
         helloBubble.addChild(helloText)
         helloBubble.alpha = 0
@@ -126,6 +154,8 @@ final class CharacterNode: SKNode {
         addChild(bodySprite)
         addChild(statusLabel)
         addChild(activityWordLabel)
+        addChild(dividerNode)
+        addChild(folderPrefixLabel)
         addChild(projectLabel)
         addChild(topicLabel)
         addChild(helloBubble)
@@ -181,9 +211,10 @@ final class CharacterNode: SKNode {
         }
     }
 
-    func updateTopic(_ topic: String) {
-        guard topic != topicLabel.text else { return }
-        topicLabel.text = topic
+    func updateTopics(_ topics: [String]) {
+        let joined = topics.isEmpty ? "nothing" : topics.joined(separator: "\n")
+        guard joined != topicLabel.text else { return }
+        topicLabel.text = joined
     }
 
     /// Update the idle duration and refresh the activity word label for standby states.
@@ -216,15 +247,11 @@ final class CharacterNode: SKNode {
         return "\(minutes)min"
     }
 
-    /// Update the live log text shown in the bubble on gaze.
+    /// Update the live log text (stored for goodbye bubble).
     private(set) var lastOutput: String = ""
 
     func updateLastOutput(_ output: String) {
         lastOutput = output
-        // If bubble is currently visible, update it live
-        if isHelloVisible {
-            updateBubbleText(output)
-        }
     }
 
     private func updateBubbleText(_ text: String) {
@@ -244,112 +271,6 @@ final class CharacterNode: SKNode {
         newBG.lineWidth = 1
         helloBubble.insertChild(newBG, at: 0)
         helloBubbleBG = newBG
-    }
-
-    // MARK: - Hello Interaction
-
-    /// Call when gaze enters this character's hitbox.
-    func gazeEntered() {
-        hasActivated = false
-        if !isHelloVisible {
-            run(.sequence([
-                .wait(forDuration: 0.3),
-                .run { [weak self] in self?.showHello() }
-            ]), withKey: "dwell")
-        }
-        // Start 3s timer before showing countdown
-        run(.sequence([
-            .wait(forDuration: 3.0),
-            .run { [weak self] in
-                guard let self = self, !self.hasActivated else { return }
-                self.startCountdown()
-            }
-        ]), withKey: "activate")
-    }
-
-    /// Call when gaze leaves this character's hitbox.
-    func gazeExited() {
-        removeAction(forKey: "dwell")
-        removeAction(forKey: "activate")
-        removeAction(forKey: "postActivate")
-        cancelCountdown()
-        hasActivated = false
-        hideHello()
-    }
-
-    private func showHello() {
-        guard !isHelloVisible else { return }
-        isHelloVisible = true
-        updateBubbleText(lastOutput)
-        helloBubble.removeAllActions()
-        helloBubble.run(.group([
-            .fadeIn(withDuration: 0.3),
-            .scale(to: 1.0, duration: 0.3)
-        ]))
-    }
-
-    private func hideHello() {
-        guard isHelloVisible else { return }
-        isHelloVisible = false
-        helloBubble.removeAllActions()
-        helloBubble.run(.group([
-            .fadeOut(withDuration: 0.3),
-            .scale(to: 0.8, duration: 0.3)
-        ]))
-    }
-
-    // MARK: - Countdown & Activation
-
-    /// Start the 3-2-1 countdown using an SKAction sequence.
-    private func startCountdown() {
-        guard !isCountingDown else { return }
-        isCountingDown = true
-
-        run(.sequence([
-            .run { [weak self] in self?.showCountdownText(3) },
-            .wait(forDuration: 1.0),
-            .run { [weak self] in self?.showCountdownText(2) },
-            .wait(forDuration: 1.0),
-            .run { [weak self] in self?.showCountdownText(1) },
-            .wait(forDuration: 1.0),
-            .run { [weak self] in self?.finishCountdown() }
-        ]), withKey: "countdown")
-    }
-
-    /// Called when countdown reaches zero.
-    private func finishCountdown() {
-        isCountingDown = false
-        hasActivated = true
-        onActivate?()
-        // Restore the log bubble after redirect
-        run(.sequence([
-            .wait(forDuration: 0.5),
-            .run { [weak self] in
-                guard let self = self, self.isHelloVisible else { return }
-                self.updateBubbleText(self.lastOutput)
-            }
-        ]), withKey: "postActivate")
-    }
-
-    private func showCountdownText(_ value: Int) {
-        let msg = "Redirecting to this agent in \(value)..."
-        updateBubbleText(msg)
-        // Change bubble style to warning (orange tint)
-        helloBubbleBG.fillColor = .init(red: 0.15, green: 0.08, blue: 0.0, alpha: 0.92)
-        helloBubbleBG.strokeColor = .init(red: 0.8, green: 0.5, blue: 0.1, alpha: 0.8)
-        helloText.fontColor = .init(red: 1.0, green: 0.85, blue: 0.5, alpha: 1)
-    }
-
-    /// Cancel the countdown and restore the log bubble.
-    private func cancelCountdown() {
-        guard isCountingDown else { return }
-        removeAction(forKey: "countdown")
-        isCountingDown = false
-        // Restore bubble style
-        helloText.fontColor = .init(red: 0.85, green: 0.95, blue: 0.85, alpha: 1)
-        if isHelloVisible {
-            updateBubbleText(lastOutput)
-        }
     }
 
     // MARK: - Asking State Glow
@@ -455,9 +376,6 @@ final class CharacterNode: SKNode {
             .run(completion)
         ]))
     }
-
-    /// Hitbox radius for gaze detection.
-    var hitboxRadius: CGFloat { characterSize * 0.75 }
 
     /// Rescale the entire node to display at a new effective size.
     /// Skips helloBubble to avoid conflicting with its show/hide animations.
