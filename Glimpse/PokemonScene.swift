@@ -65,6 +65,7 @@ final class PokemonScene: SKScene {
         // Add new or update existing sessions
         let nonStaleSessions = sessions.filter { !$0.isStale }
         let charSize = characterSize(for: nonStaleSessions.count)
+        print("[PokemonScene] scene.size=\(size), charSize=\(charSize), nonStale=\(nonStaleSessions.count)")
         for session in nonStaleSessions {
             guard !departingNodes.contains(session.id) else { continue }
             if let existing = characterNodes[session.id] {
@@ -72,6 +73,7 @@ final class PokemonScene: SKScene {
                 existing.updateActivity(session.activity)
             } else {
                 // New session — create character
+                print("[PokemonScene] Creating character for session \(session.id.prefix(8))... project=\(session.projectName)")
                 let node = CharacterNode(
                     sessionID: session.id,
                     projectName: session.projectName,
@@ -81,6 +83,7 @@ final class PokemonScene: SKScene {
                 node.animateAppear()
                 addChild(node)
                 characterNodes[session.id] = node
+                print("[PokemonScene] Character node position=\(node.position), children=\(node.children.count)")
             }
         }
 
@@ -129,7 +132,11 @@ final class PokemonScene: SKScene {
     private func relayout() {
         let activeNodes = characterNodes.values.filter { !departingNodes.contains($0.sessionID) }
         let count = activeNodes.count
-        guard count > 0 else { return }
+        guard count > 0 else {
+            print("[PokemonScene] relayout: no active nodes")
+            return
+        }
+        print("[PokemonScene] relayout: \(count) nodes, scene.size=\(size)")
 
         let cols = columns(for: count)
         let rows = Int(ceil(Double(count) / Double(cols)))
