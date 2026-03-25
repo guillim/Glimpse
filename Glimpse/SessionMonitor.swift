@@ -19,6 +19,7 @@ final class SessionMonitor {
         let projectName: String   // Extracted from parent directory name
         let activity: Activity
         let topic: String         // Short summary of current goal (from last user message)
+        let lastOutput: String    // Last few lines of assistant output (for live log bubble)
         let lastModified: Date
         /// True if modified 60s–2min ago (stale tier). PokemonScene uses this to trigger goodbye/fade-out animation.
         let isStale: Bool
@@ -129,13 +130,14 @@ final class SessionMonitor {
                 let isStale = age >= activeThreshold
 
                 let sessionID = fileURL.deletingPathExtension().lastPathComponent
-                let (activity, topic) = Self.classifyActivityAndTopic(fileURL: fileURL, lastModified: modified, now: now)
+                let result = Self.classifyActivityAndTopic(fileURL: fileURL, lastModified: modified, now: now)
 
                 sessions.append(Session(
                     id: sessionID,
                     projectName: projectName,
-                    activity: activity,
-                    topic: topic,
+                    activity: result.activity,
+                    topic: result.topic,
+                    lastOutput: result.lastOutput,
                     lastModified: modified,
                     isStale: isStale
                 ))
@@ -151,6 +153,23 @@ final class SessionMonitor {
         let components = dirName.split(separator: "-").map(String.init)
         let name = components.last ?? dirName
         return "dir: \(name)"
+    }
+
+    /// Truncate output to fit in the bubble: max N lines, max M chars.
+    static func truncateOutput(_ text: String, maxLines: Int, maxChars: Int) -> String {
+        let lines = text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .suffix(maxLines)
+        var result = lines.joined(separator: "\n")
+        if result.count > maxChars {
+            result = String(result.suffix(maxChars - 3))
+            // Trim to word boundary
+            if let spaceIdx = result.firstIndex(of: " ") {
+                result = "..." + String(result[spaceIdx...])
+            }
+        }
+        return result
     }
 
     /// Extract a short topic (1-3 words) from the user's message.
@@ -176,15 +195,22 @@ final class SessionMonitor {
         return topic
     }
 
-    /// Read last ~10 lines of a JSONL file, classify activity, and extract topic.
+    struct ScanResult {
+        let activity: Activity
+        let topic: String
+        let lastOutput: String
+    }
+
+    /// Read last ~20 lines of a JSONL file, classify activity, extract topic, and last output.
     /// Uses FileHandle to read only the tail of potentially large files.
-    static func classifyActivityAndTopic(fileURL: URL, lastModified: Date, now: Date) -> (Activity, String) {
+    static func classifyActivityAndTopic(fileURL: URL, lastModified: Date, now: Date) -> ScanResult {
+        let empty = ScanResult(activity: .sleeping, topic: "", lastOutput: "")
         // If no activity for 2+ minutes, sleeping
-        if now.timeIntervalSince(lastModified) > 120 { return (.sleeping, "") }
+        if now.timeIntervalSince(lastModified) > 120 { return empty }
 
         // Read only the last ~32KB to avoid loading multi-MB session logs entirely.
         let tailBytes = 32 * 1024
-        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return (.sleeping, "") }
+        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return empty }
         defer { try? handle.close() }
 
         let fileSize = handle.seekToEndOfFile()
@@ -192,7 +218,7 @@ final class SessionMonitor {
         handle.seek(toFileOffset: readOffset)
         let data = handle.availableData
         guard let content = String(data: data, encoding: .utf8) else {
-            return (.sleeping, "")
+            return empty
         }
 
         // Get last ~20 non-empty lines (more for topic extraction)
@@ -203,6 +229,7 @@ final class SessionMonitor {
 
         var activity: Activity = .sleeping
         var topic: String = ""
+        var lastOutput: String = ""
 
         // Walk backwards to find the most recent meaningful message
         for line in lines.reversed() {
@@ -226,6 +253,20 @@ final class SessionMonitor {
                message["role"] as? String == "user",
                let msgContent = message["content"] as? String {
                 topic = Self.extractTopic(from: msgContent)
+            }
+
+            // Extract last assistant text output for the live log bubble
+            if lastOutput.isEmpty, type == "assistant",
+               let message = json["message"] as? [String: Any],
+               let blocks = message["content"] as? [[String: Any]] {
+                for block in blocks {
+                    if block["type"] as? String == "text",
+                       let text = block["text"] as? String,
+                       !text.isEmpty {
+                        lastOutput = Self.truncateOutput(text, maxLines: 4, maxChars: 200)
+                        break
+                    }
+                }
             }
 
             // Skip if we already classified activity
@@ -267,6 +308,6 @@ final class SessionMonitor {
             }
         }
 
-        return (activity, topic)
+        return ScanResult(activity: activity, topic: topic, lastOutput: lastOutput)
     }
 }

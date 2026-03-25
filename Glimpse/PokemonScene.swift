@@ -29,10 +29,10 @@ final class PokemonScene: SKScene {
 
     // Debug: gaze dot visualization
     private let gazeDot: SKShapeNode = {
-        let dot = SKShapeNode(circleOfRadius: 8)
-        dot.fillColor = .init(red: 1, green: 0, blue: 0, alpha: 0.6)
-        dot.strokeColor = .white
-        dot.lineWidth = 1
+        let dot = SKShapeNode(circleOfRadius: 3)
+        dot.fillColor = .init(red: 1, green: 0, blue: 0, alpha: 0.4)
+        dot.strokeColor = .clear
+        dot.lineWidth = 0
         dot.zPosition = 100
         return dot
     }()
@@ -97,9 +97,10 @@ final class PokemonScene: SKScene {
         for session in nonStaleSessions {
             guard !departingNodes.contains(session.id) else { continue }
             if let existing = characterNodes[session.id] {
-                // Update activity and topic
+                // Update activity, topic, and live log
                 existing.updateActivity(session.activity)
                 existing.updateTopic(session.topic)
+                existing.updateLastOutput(session.lastOutput)
             } else {
                 // New session — create character
                 print("[PokemonScene] Creating character for session \(session.id.prefix(8))... project=\(session.projectName) topic=\(session.topic)")
@@ -110,6 +111,7 @@ final class PokemonScene: SKScene {
                 )
                 node.updateActivity(session.activity)
                 node.updateTopic(session.topic)
+                node.updateLastOutput(session.lastOutput)
                 node.animateAppear()
                 addChild(node)
                 characterNodes[session.id] = node

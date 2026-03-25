@@ -13,7 +13,7 @@ final class CharacterNode: SKNode {
     private let projectLabel: SKLabelNode
     private let topicLabel: SKLabelNode
     private let helloBubble: SKNode
-    private let helloBubbleBG: SKShapeNode
+    private var helloBubbleBG: SKShapeNode
     private let helloText: SKLabelNode
 
     /// Track current status to avoid redundant updates.
@@ -69,23 +69,24 @@ final class CharacterNode: SKNode {
         topicLabel.horizontalAlignmentMode = .center
 
         // Hello bubble (hidden by default)
-        helloText = SKLabelNode(fontNamed: "Menlo-Bold")
-        helloText.text = "Hello!"
-        helloText.fontSize = max(size * 0.18, 11)
+        helloText = SKLabelNode(fontNamed: "Menlo")
+        helloText.text = ""
+        helloText.fontSize = 10
         helloText.fontColor = .init(white: 0.15, alpha: 1)
         helloText.verticalAlignmentMode = .center
         helloText.horizontalAlignmentMode = .center
+        helloText.numberOfLines = 0
+        helloText.preferredMaxLayoutWidth = 280
         helloText.position = CGPoint(x: 0, y: 0)
 
-        let padding: CGFloat = 8
-        let bubbleW = helloText.frame.width + padding * 2
-        let bubbleH = helloText.fontSize + padding * 2
-        helloBubbleBG = SKShapeNode(rectOf: CGSize(width: bubbleW, height: bubbleH), cornerRadius: bubbleH / 2)
-        helloBubbleBG.fillColor = .init(white: 1, alpha: 0.9)
-        helloBubbleBG.strokeColor = .clear
+        // Start with a reasonable default bubble size; updated dynamically in updateBubbleText
+        helloBubbleBG = SKShapeNode(rectOf: CGSize(width: 100, height: 30), cornerRadius: 6)
+        helloBubbleBG.fillColor = .init(white: 0, alpha: 0.75)
+        helloBubbleBG.strokeColor = .init(white: 0.3, alpha: 0.5)
+        helloBubbleBG.lineWidth = 0.5
 
         helloBubble = SKNode()
-        helloBubble.position = CGPoint(x: 0, y: size * 0.55 + 8)
+        helloBubble.position = CGPoint(x: 0, y: size * 0.55 + 12)
         helloBubble.addChild(helloBubbleBG)
         helloBubble.addChild(helloText)
         helloBubble.alpha = 0
@@ -133,6 +134,36 @@ final class CharacterNode: SKNode {
         topicLabel.text = topic
     }
 
+    /// Update the live log text shown in the bubble on gaze.
+    private(set) var lastOutput: String = ""
+
+    func updateLastOutput(_ output: String) {
+        lastOutput = output
+        // If bubble is currently visible, update it live
+        if isHelloVisible {
+            updateBubbleText(output)
+        }
+    }
+
+    private func updateBubbleText(_ text: String) {
+        let display = text.isEmpty ? "..." : text
+        helloText.text = display
+
+        // Resize bubble background to fit text
+        let textFrame = helloText.frame
+        let padding: CGFloat = 10
+        let bgW = max(textFrame.width + padding * 2, 60)
+        let bgH = max(textFrame.height + padding * 2, 24)
+
+        helloBubbleBG.removeFromParent()
+        let newBG = SKShapeNode(rectOf: CGSize(width: bgW, height: bgH), cornerRadius: 6)
+        newBG.fillColor = .init(white: 0, alpha: 0.75)
+        newBG.strokeColor = .init(white: 0.3, alpha: 0.5)
+        newBG.lineWidth = 0.5
+        helloBubble.insertChild(newBG, at: 0)
+        helloBubbleBG = newBG
+    }
+
     // MARK: - Hello Interaction
 
     /// Call when gaze enters this character's hitbox.
@@ -154,6 +185,7 @@ final class CharacterNode: SKNode {
     private func showHello() {
         guard !isHelloVisible else { return }
         isHelloVisible = true
+        updateBubbleText(lastOutput)
         helloBubble.removeAllActions()
         helloBubble.run(.group([
             .fadeIn(withDuration: 0.3),
