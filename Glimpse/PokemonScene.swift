@@ -238,179 +238,115 @@ final class PokemonScene: SKScene {
         }
     }
 
-    // MARK: - Terminal Activation
+    // MARK: - App Activation
 
-    /// Find and bring to front a terminal window running in the session's project directory.
-    /// Uses tty-based cwd matching: gets each terminal session's tty, checks if the process
-    /// on that tty has a working directory matching the project path.
+    /// Find the application that hosts the Claude session and bring it to front.
+    /// Generic approach: find a process whose cwd matches the project path,
+    /// walk up the process tree to find the GUI app, and activate it.
     private func activateTerminal(for sessionID: String) {
         guard let projectPath = sessionPaths[sessionID] else { return }
-        NSLog("[Glimpse] activateTerminal: looking for project path '%@'", projectPath)
 
-        // Try iTerm2 first (user's primary terminal), then Terminal.app
-        if activateITermByCwd(projectPath: projectPath) {
-            NSLog("[Glimpse] Activated iTerm2 session for '%@'", projectPath)
-        } else if activateTerminalAppByCwd(projectPath: projectPath) {
-            NSLog("[Glimpse] Activated Terminal.app window for '%@'", projectPath)
+        // Find a "claude" process whose cwd matches this project
+        guard let appPID = findGUIAppPID(forProjectPath: projectPath) else {
+            NSLog("[Glimpse] No app found for '%@'", projectPath)
+            return
+        }
+
+        // Activate the app by PID
+        if let app = NSRunningApplication(processIdentifier: appPID) {
+            NSLog("[Glimpse] Activating '%@' (pid %d) for '%@'",
+                  app.localizedName ?? "unknown", appPID, projectPath)
+            app.activate(options: [.activateAllWindows])
         } else {
-            NSLog("[Glimpse] No terminal found for '%@'", projectPath)
+            NSLog("[Glimpse] Could not create NSRunningApplication for pid %d", appPID)
         }
     }
 
-    /// Find an iTerm2 session whose tty process has cwd matching the project path.
-    private func activateITermByCwd(projectPath: String) -> Bool {
-        // Get all iTerm2 session ttys, check cwd of each via lsof, activate matching one.
-        let script = """
-        tell application "System Events"
-            if not (exists process "iTerm2") then return ""
-        end tell
-        tell application "iTerm2"
-            set result to ""
-            set wc to count of windows
-            repeat with i from 1 to wc
-                set tc to count of tabs of window i
-                repeat with j from 1 to tc
-                    set sc to count of sessions of tab j of window i
-                    repeat with k from 1 to sc
-                        set s to session k of tab j of window i
-                        set t to tty of s
-                        set result to result & t & ":" & i & ":" & j & ":" & k & linefeed
-                    end repeat
-                end repeat
-            end repeat
-            return result
-        end tell
-        """
+    /// Find a "claude" process with cwd matching the project path,
+    /// then walk up the parent chain to find the GUI application PID.
+    private func findGUIAppPID(forProjectPath projectPath: String) -> pid_t? {
+        // Use `pgrep -f claude` to find claude processes, then check their cwd
+        let pgrepPipe = Pipe()
+        let pgrep = Process()
+        pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        pgrep.arguments = ["-f", "claude"]
+        pgrep.standardOutput = pgrepPipe
+        pgrep.standardError = FileHandle.nullDevice
+        do { try pgrep.run(); pgrep.waitUntilExit() } catch { return nil }
 
-        guard let ttysScript = NSAppleScript(source: script) else { return false }
-        var error: NSDictionary?
-        let result = ttysScript.executeAndReturnError(&error)
-        if error != nil { return false }
+        let pgrepData = pgrepPipe.fileHandleForReading.readDataToEndOfFile()
+        guard let pgrepOutput = String(data: pgrepData, encoding: .utf8) else { return nil }
 
-        let ttysString = result.stringValue ?? ""
-        let entries = ttysString.components(separatedBy: .newlines).filter { !$0.isEmpty }
+        let claudePIDs = pgrepOutput.components(separatedBy: .newlines)
+            .compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) }
 
-        for entry in entries {
-            let parts = entry.components(separatedBy: ":")
-            guard parts.count >= 4, let tty = parts.first else { continue }
-
-            // Check if a process on this tty has cwd matching our project
-            if ttyHasCwd(tty: tty, projectPath: projectPath) {
-                let winIdx = parts[1]
-                let tabIdx = parts[2]
-                NSLog("[Glimpse] Found match on %@ (window %@, tab %@)", tty, winIdx, tabIdx)
-
-                // Activate this window and tab
-                let activateScript = """
-                tell application "iTerm2"
-                    set index of window \(winIdx) to 1
-                    select tab \(tabIdx) of window 1
-                    activate
-                end tell
-                """
-                _ = runAppleScript(activateScript)
-                return true
-            }
-        }
-        return false
-    }
-
-    /// Check if any process on the given tty has a cwd matching the project path.
-    private func ttyHasCwd(tty: String, projectPath: String) -> Bool {
-        let pipe = Pipe()
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        process.arguments = ["+D", tty, "-Fn"]  // This won't work well, use different approach
-        // Instead: find PIDs attached to this tty, then check their cwd
-        let lsofPipe = Pipe()
-        let lsof = Process()
-        lsof.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        lsof.arguments = [tty]
-        lsof.standardOutput = lsofPipe
-        lsof.standardError = FileHandle.nullDevice
-        do {
-            try lsof.run()
-            lsof.waitUntilExit()
-        } catch { return false }
-
-        let data = lsofPipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else { return false }
-
-        // Extract PIDs from lsof output
-        var pids = Set<String>()
-        for line in output.components(separatedBy: .newlines) {
-            let cols = line.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
-            if cols.count >= 2, cols[0] != "COMMAND" {
-                pids.insert(cols[1])
-            }
-        }
-
-        // Check cwd of each PID
-        for pid in pids {
-            let cwdPipe = Pipe()
-            let cwdProc = Process()
-            cwdProc.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-            cwdProc.arguments = ["-p", pid, "-Fn"]
-            cwdProc.standardOutput = cwdPipe
-            cwdProc.standardError = FileHandle.nullDevice
-            do {
-                try cwdProc.run()
-                cwdProc.waitUntilExit()
-            } catch { continue }
-
-            let cwdData = cwdPipe.fileHandleForReading.readDataToEndOfFile()
-            guard let cwdOutput = String(data: cwdData, encoding: .utf8) else { continue }
-
-            // lsof -Fn output: lines starting with 'n' are file names
-            // Look for 'cwd' type followed by the path
-            let lines = cwdOutput.components(separatedBy: .newlines)
-            var isCwd = false
-            for line in lines {
-                if line == "fcwd" { isCwd = true; continue }
-                if isCwd && line.hasPrefix("n") {
-                    let path = String(line.dropFirst())
-                    if path == projectPath || projectPath.hasPrefix(path) || path.hasPrefix(projectPath) {
-                        return true
-                    }
-                    isCwd = false
+        // For each claude process, check if its cwd matches the project path
+        for pid in claudePIDs {
+            if let cwd = getCwd(pid: pid), cwd == projectPath {
+                // Found the claude process. Walk up to the GUI app.
+                if let appPID = findParentApp(pid: pid) {
+                    return appPID
                 }
             }
         }
-        return false
+        return nil
     }
 
-    /// Search Terminal.app windows by checking tty cwd.
-    private func activateTerminalAppByCwd(projectPath: String) -> Bool {
-        let dirName = (projectPath as NSString).lastPathComponent
-        let script = """
-        tell application "System Events"
-            if not (exists process "Terminal") then return false
-        end tell
-        tell application "Terminal"
-            set windowCount to count of windows
-            repeat with i from 1 to windowCount
-                set winName to name of window i
-                if winName contains "\(dirName)" then
-                    set frontmost to true
-                    set index of window i to 1
-                    activate
-                    return true
-                end if
-            end repeat
-        end tell
-        return false
-        """
-        return runAppleScript(script)
-    }
+    /// Get the current working directory of a process.
+    private func getCwd(pid: pid_t) -> String? {
+        let pipe = Pipe()
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        proc.arguments = ["-p", "\(pid)", "-Fn", "-d", "cwd"]
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        do { try proc.run(); proc.waitUntilExit() } catch { return nil }
 
-    private func runAppleScript(_ source: String) -> Bool {
-        guard let script = NSAppleScript(source: source) else { return false }
-        var error: NSDictionary?
-        let result = script.executeAndReturnError(&error)
-        if let err = error {
-            NSLog("[Glimpse] AppleScript error: %@", err.description)
-            return false
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else { return nil }
+
+        // Parse lsof -Fn output: 'n' prefix lines are paths
+        for line in output.components(separatedBy: .newlines) {
+            if line.hasPrefix("n/") {
+                return String(line.dropFirst())
+            }
         }
-        return result.booleanValue
+        return nil
+    }
+
+    /// Walk up the process parent chain to find a GUI application.
+    /// Returns the PID of the first ancestor that is a running NSRunningApplication.
+    private func findParentApp(pid: pid_t) -> pid_t? {
+        var currentPID = pid
+        var visited = Set<pid_t>()
+
+        while currentPID > 1 && !visited.contains(currentPID) {
+            visited.insert(currentPID)
+
+            // Check if this PID is a GUI app
+            if NSRunningApplication(processIdentifier: currentPID) != nil {
+                return currentPID
+            }
+
+            // Get parent PID
+            guard let ppid = getParentPID(currentPID) else { break }
+            currentPID = ppid
+        }
+        return nil
+    }
+
+    /// Get the parent PID of a process.
+    private func getParentPID(_ pid: pid_t) -> pid_t? {
+        let pipe = Pipe()
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/ps")
+        proc.arguments = ["-o", "ppid=", "-p", "\(pid)"]
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        do { try proc.run(); proc.waitUntilExit() } catch { return nil }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else { return nil }
+        return Int32(output.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 }
