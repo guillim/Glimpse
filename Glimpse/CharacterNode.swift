@@ -10,6 +10,7 @@ final class CharacterNode: SKNode {
 
     private let bodySprite: SKSpriteNode
     private let cardBG: SKShapeNode
+    private var glowNode: SKShapeNode?
     private let statusLabel: SKLabelNode
     private let activityWordLabel: SKLabelNode
     private let projectLabel: SKLabelNode
@@ -334,6 +335,56 @@ final class CharacterNode: SKNode {
         if isHelloVisible {
             updateBubbleText(lastOutput)
         }
+    }
+
+    // MARK: - Asking State Glow
+
+    private func showAskingGlow() {
+        guard glowNode == nil else { return }
+        let glow = SKShapeNode(circleOfRadius: characterSize * 0.55)
+        glow.fillColor = .clear
+        glow.strokeColor = .init(red: 1.0, green: 0.55, blue: 0.0, alpha: 0.7)
+        glow.lineWidth = 3
+        glow.glowWidth = 8
+        glow.zPosition = -1
+        glow.alpha = 0
+        addChild(glow)
+        glowNode = glow
+
+        // Fade in, then start pulsing
+        let grow = SKAction.group([
+            .scale(to: 1.15, duration: 0.6),
+            .fadeAlpha(to: 1.0, duration: 0.6)
+        ])
+        grow.timingMode = .easeInEaseOut
+        let shrink = SKAction.group([
+            .scale(to: 1.0, duration: 0.6),
+            .fadeAlpha(to: 0.7, duration: 0.6)
+        ])
+        shrink.timingMode = .easeInEaseOut
+        let pulse = SKAction.repeatForever(.sequence([grow, shrink]))
+
+        glow.run(.sequence([
+            .fadeIn(withDuration: 0.3),
+            pulse
+        ]), withKey: "askingGlow")
+
+        // Card border to orange
+        cardBG.strokeColor = .init(red: 1.0, green: 0.55, blue: 0.0, alpha: 0.6)
+    }
+
+    private func hideAskingGlow() {
+        guard let glow = glowNode else { return }
+        glow.removeAction(forKey: "askingGlow")
+        glow.run(.sequence([
+            .fadeOut(withDuration: 0.3),
+            .run { [weak self] in
+                glow.removeFromParent()
+                self?.glowNode = nil
+            }
+        ]))
+        // Restore card border to default gray
+        cardBG.strokeColor = .init(red: 0.3, green: 0.3, blue: 0.4, alpha: 0.4)
     }
 
     // MARK: - Lifecycle Animations
