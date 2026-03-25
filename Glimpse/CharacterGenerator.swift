@@ -4,6 +4,14 @@ import AppKit
 /// Generates unique Pokemon-styled pixel art creatures from a session ID seed.
 /// Pure function: same sessionID always produces the same CGImage.
 enum CharacterGenerator {
+    /// Wraps CGImage for NSCache (requires AnyObject-conforming values).
+    private class CGImageBox {
+        let image: CGImage
+        init(_ image: CGImage) { self.image = image }
+    }
+
+    /// Cache of generated sprites keyed on "sessionID:roundedSize".
+    private static let cache = NSCache<NSString, CGImageBox>()
 
     /// All traits derived from a deterministic seed.
     struct Traits {
@@ -91,6 +99,11 @@ enum CharacterGenerator {
 
     /// Generate a character image at the given pixel size.
     static func generate(sessionID: String, size: CGFloat) -> CGImage? {
+        let cacheKey = "\(sessionID):\(Int(size.rounded()))" as NSString
+        if let cached = cache.object(forKey: cacheKey) {
+            return cached.image
+        }
+
         let t = traits(for: sessionID)
         let s = size
         let scale: CGFloat = 2.0  // retina
@@ -316,6 +329,11 @@ enum CharacterGenerator {
         }
 
         let image = ctx.makeImage()
+
+        // Store in cache before returning
+        if let image = image {
+            cache.setObject(CGImageBox(image), forKey: cacheKey)
+        }
         return image
     }
 }
