@@ -27,12 +27,33 @@ final class PokemonScene: SKScene {
     // Gaze interaction state
     private var focusedCharacterID: String?
 
+    // Debug: gaze dot visualization
+    private let gazeDot: SKShapeNode = {
+        let dot = SKShapeNode(circleOfRadius: 8)
+        dot.fillColor = .init(red: 1, green: 0, blue: 0, alpha: 0.6)
+        dot.strokeColor = .white
+        dot.lineWidth = 1
+        dot.zPosition = 100
+        return dot
+    }()
+    private let gazeLabel: SKLabelNode = {
+        let label = SKLabelNode(fontNamed: "Menlo")
+        label.fontSize = 12
+        label.fontColor = .init(red: 1, green: 0.3, blue: 0.3, alpha: 0.8)
+        label.verticalAlignmentMode = .bottom
+        label.horizontalAlignmentMode = .left
+        label.zPosition = 100
+        return label
+    }()
+
     // MARK: - Scene Lifecycle
 
     override func didMove(to view: SKView) {
         backgroundColor = .black
         addChild(emptyLabel)
         emptyLabel.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        addChild(gazeDot)
+        addChild(gazeLabel)
         print("[PokemonScene] didMove — size: \(size)")
 
         sessionMonitor.onUpdate = { [weak self] sessions in
@@ -188,7 +209,10 @@ final class PokemonScene: SKScene {
     // MARK: - Head Tracking & Gaze
 
     override func update(_ currentTime: TimeInterval) {
-        guard let tracker = headTracker else { return }
+        guard let tracker = headTracker else {
+            gazeLabel.text = "No tracker"
+            return
+        }
 
         let offset = tracker.latestOffset
 
@@ -196,6 +220,11 @@ final class PokemonScene: SKScene {
         let gazeX = size.width  * 0.5 + CGFloat(offset.x) * size.width  * 0.5
         let gazeY = size.height * 0.5 + CGFloat(offset.y) * size.height * 0.5
         let gazePoint = CGPoint(x: gazeX, y: gazeY)
+
+        // Debug: update gaze dot
+        gazeDot.position = gazePoint
+        gazeLabel.position = CGPoint(x: 10, y: 10)
+        gazeLabel.text = String(format: "gaze: (%.0f, %.0f) offset: (%.2f, %.2f)", gazeX, gazeY, offset.x, offset.y)
 
         // Find nearest character within hitbox
         var nearestID: String?
