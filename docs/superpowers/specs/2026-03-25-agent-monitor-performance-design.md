@@ -23,7 +23,7 @@ Add a private static `NSCache` to `CharacterGenerator` that maps `(sessionID, si
 
 #### Cache Key
 
-String of format `"sessionID:size"` (e.g. `"abc123:96.0"`). Uses `NSString` as the key type since `NSCache` requires `AnyObject`-conforming keys.
+String of format `"sessionID:size"` where size is rounded to the nearest integer (e.g. `"abc123:96"`). Rounding avoids cache misses from floating-point drift — `characterSize(for:)` returns continuous `CGFloat` values from division, but sub-pixel differences are visually identical. Uses `NSString` as the key type since `NSCache` requires `AnyObject`-conforming keys.
 
 #### Value Wrapper
 
@@ -38,7 +38,7 @@ private class CGImageBox {
 
 #### Modified `generate()` Flow
 
-1. Build cache key: `"\(sessionID):\(size)"` as `NSString`
+1. Build cache key: `"\(sessionID):\(Int(size.rounded()))"` as `NSString`
 2. Check cache — if hit, return `box.image`
 3. If miss, generate image as before
 4. Store result in cache
@@ -95,7 +95,7 @@ private var countdownTimer: Timer?
 
 #### `startCountdown()` — Replaces Repeating Timer
 
-Build a single `SKAction.sequence` that counts down 3 → 2 → 1 → fire:
+Build a single `SKAction.sequence` that counts down 3 → 2 → 1 → fire. Refactor `showCountdownText()` to accept an `Int` parameter instead of reading from `self.countdownValue`. The `countdownValue` property can be removed.
 
 ```
 sequence([
@@ -109,7 +109,7 @@ sequence([
 ])
 ```
 
-Run with key `"countdown"`. The `finishCountdown()` method sets `hasActivated = true`, calls `onActivate?()`, and restores the bubble after 0.5s.
+Run with key `"countdown"`. The `finishCountdown()` method sets `hasActivated = true`, calls `onActivate?()`, and restores the bubble after 0.5s using an SKAction (not `DispatchQueue.main.asyncAfter`, to stay within SpriteKit's scheduling).
 
 #### `cancelCountdown()` — Replaces Timer Invalidation
 
@@ -122,7 +122,7 @@ Run with key `"countdown"`. The `finishCountdown()` method sets `hasActivated = 
 
 #### `deinit` Simplification
 
-Remove `dwellTimer?.invalidate()`, `activateTimer?.invalidate()`, `countdownTimer?.invalidate()`. SKActions are automatically cleaned up when the node is removed from the scene. The `deinit` block can be removed entirely.
+Remove the three `timer?.invalidate()` lines. SKActions are automatically cleaned up when the node is removed from the scene. The `deinit` block can be removed since it has no other work to do.
 
 ### Behavioral Equivalence
 
@@ -147,3 +147,5 @@ SKAction timing is tied to SpriteKit's frame clock rather than the system wall c
 - **Rapid gaze enter/exit:** `removeAction(forKey:)` is safe to call even if no action with that key exists
 - **Countdown interrupted by gaze exit then re-enter:** Countdown restarts from 3 (same as current behavior — `cancelCountdown()` resets state, new `gazeEntered()` starts fresh activate timer)
 - **Node removed during countdown:** SKActions are removed with the node; `[weak self]` in action closures prevents retain cycles
+- **Rapid gaze flicker (enter/exit/enter):** Running an SKAction `withKey:` replaces any existing action with that key, so double-entry is self-correcting — no guard needed
+- **Cache hit path:** `PokemonScene.relayout()` calls `node.rescale(to:)` which scales the SpriteKit node transform — it does not call `generate()`. The cache is only hit on node creation (new sessions or session count changes), not on every 2-second poll cycle
