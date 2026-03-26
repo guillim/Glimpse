@@ -16,11 +16,7 @@
     <string>Glimpse</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
-    <key>NSCameraUsageDescription</key>
-    <string>Glimpse uses your camera to track head position for the 3D parallax effect.</string>
-    <key>NSMotionUsageDescription</key>
-    <string>Glimpse uses headphone motion sensors (AirPods) for low-latency head tracking.</string>
-    <key>LSUIElement</key>
+<key>LSUIElement</key>
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>

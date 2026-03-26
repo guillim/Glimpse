@@ -1,0 +1,227 @@
+<h2>Making "Needs Input" Feel Urgent</h2>
+<p class="subtitle">3 approaches — each adds a distinct visual break from the calm idle/active states</p>
+
+<style>
+  .demo-scene {
+    background: #1a1a2e;
+    border-radius: 12px;
+    padding: 32px 24px;
+    display: flex;
+    justify-content: center;
+    gap: 48px;
+    align-items: flex-end;
+    min-height: 220px;
+    position: relative;
+    overflow: hidden;
+  }
+  .character-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .char-body {
+    width: 64px;
+    height: 64px;
+    border-radius: 8px;
+    image-rendering: pixelated;
+    position: relative;
+  }
+  .char-normal {
+    background: #4a7c59;
+  }
+  .char-asking-pulse {
+    background: #4a7c59;
+    animation: pulseGlow 1.2s ease-in-out infinite;
+    box-shadow: 0 0 20px 8px rgba(255, 140, 0, 0.7);
+  }
+  .char-asking-bounce {
+    background: #4a7c59;
+    animation: bounce 0.6s ease-in-out infinite;
+  }
+  .char-asking-tint {
+    background: #c4703a;
+    animation: tintPulse 1.0s ease-in-out infinite;
+  }
+  .status-emoji {
+    font-size: 20px;
+    position: absolute;
+    bottom: -4px;
+    right: -8px;
+  }
+  .status-word {
+    font-size: 11px;
+    color: #8a8a9a;
+    font-family: monospace;
+  }
+  .project-label {
+    font-size: 10px;
+    color: #6a6a7a;
+    font-family: monospace;
+  }
+
+  /* Approach A: Pulsing orange glow ring */
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 12px 4px rgba(255, 140, 0, 0.5); }
+    50% { box-shadow: 0 0 28px 12px rgba(255, 140, 0, 0.9); }
+  }
+
+  /* Approach B: Bouncing character */
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-16px); }
+  }
+
+  /* Approach C: Color tint pulse */
+  @keyframes tintPulse {
+    0%, 100% { background: #c4703a; filter: brightness(1.0); }
+    50% { background: #d4843a; filter: brightness(1.3); }
+  }
+
+  /* Exclamation badge */
+  .exclaim-badge {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: #ff4444;
+    color: white;
+    font-weight: 900;
+    font-size: 14px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: badgePulse 1.0s ease-in-out infinite;
+    border: 2px solid #1a1a2e;
+  }
+  @keyframes badgePulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+  }
+
+  .option h3 { margin-bottom: 4px; }
+  .option .pros-cons { margin-top: 8px; font-size: 13px; }
+  .option .pros-cons h4 { font-size: 12px; margin-bottom: 2px; }
+  .approach-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #ff8c00;
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+</style>
+
+<div class="options">
+  <!-- Option A: Pulsing Glow -->
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Pulsing Orange Glow</h3>
+      <p>A radiating glow ring pulses around the character, like a notification beacon. Other characters have no glow at all, so this is immediately noticeable.</p>
+      <div class="demo-scene">
+        <div class="character-slot">
+          <div class="char-body char-normal" style="position:relative;">
+            <span class="status-emoji">🧠</span>
+          </div>
+          <span class="status-word">think</span>
+          <span class="project-label">api-server</span>
+        </div>
+        <div class="character-slot">
+          <div class="char-body char-asking-pulse" style="position:relative;">
+            <span class="status-emoji">❓</span>
+          </div>
+          <span class="status-word" style="color: #ff8c00; font-weight:bold;">ask</span>
+          <span class="project-label">web-app</span>
+        </div>
+        <div class="character-slot">
+          <div class="char-body char-normal" style="position:relative;">
+            <span class="status-emoji">⚡</span>
+          </div>
+          <span class="status-word">run</span>
+          <span class="project-label">infra</span>
+        </div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Catches peripheral vision — works even when not looking directly</li><li>Subtle enough to not be annoying over long waits</li><li>Clean SpriteKit implementation (SKAction repeat + SKEffectNode glow)</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>If multiple agents ask at once, the scene could get "loud"</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Option B: Bounce + Badge -->
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Bouncing + Red Badge</h3>
+      <p>The character bounces up and down with a red "!" notification badge — like an app icon demanding attention. Maximum urgency.</p>
+      <div class="demo-scene">
+        <div class="character-slot">
+          <div class="char-body char-normal" style="position:relative;">
+            <span class="status-emoji">🧠</span>
+          </div>
+          <span class="status-word">think</span>
+          <span class="project-label">api-server</span>
+        </div>
+        <div class="character-slot">
+          <div class="char-body char-asking-bounce" style="position:relative;">
+            <span class="exclaim-badge">!</span>
+            <span class="status-emoji">❓</span>
+          </div>
+          <span class="status-word" style="color: #ff4444; font-weight:bold;">ask</span>
+          <span class="project-label">web-app</span>
+        </div>
+        <div class="character-slot">
+          <div class="char-body char-normal" style="position:relative;">
+            <span class="status-emoji">⚡</span>
+          </div>
+          <span class="status-word">run</span>
+          <span class="project-label">infra</span>
+        </div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Impossible to miss — motion + color + badge triple signal</li><li>Familiar pattern (iOS app badges, chat notifications)</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Continuous bouncing can feel frantic/stressful after a few minutes</li><li>Breaks the calm aesthetic of the idle scene</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Option C: Tint + Glow + Badge (combined) -->
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Color Tint + Glow + Badge</h3>
+      <p>The character's body shifts to warm orange, gains a pulsing glow, AND gets a "!" badge. No motion — the color break alone is striking since all other characters stay their natural hue. Three static-ish signals that stack.</p>
+      <div class="demo-scene">
+        <div class="character-slot">
+          <div class="char-body char-normal" style="position:relative;">
+            <span class="status-emoji">🧠</span>
+          </div>
+          <span class="status-word">think</span>
+          <span class="project-label">api-server</span>
+        </div>
+        <div class="character-slot">
+          <div class="char-body char-asking-tint" style="position:relative; box-shadow: 0 0 16px 6px rgba(255, 140, 0, 0.6);">
+            <span class="exclaim-badge">!</span>
+            <span class="status-emoji">❓</span>
+          </div>
+          <span class="status-word" style="color: #ff8c00; font-weight:bold;">ask</span>
+          <span class="project-label">web-app</span>
+        </div>
+        <div class="character-slot">
+          <div class="char-body char-normal" style="position:relative;">
+            <span class="status-emoji">⚡</span>
+          </div>
+          <span class="status-word">run</span>
+          <span class="project-label">infra</span>
+        </div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Color shift is the strongest differentiator — no other state changes the character's hue</li><li>Less jittery than bouncing, but more visible than glow alone</li><li>Badge adds a familiar "unread" signal on top</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Tinting the sprite requires either a color blend on the SKSpriteNode or re-rendering with adjusted palette</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

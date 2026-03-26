@@ -1,8 +1,8 @@
 // Glimpse/CharacterNode.swift
 import SpriteKit
 
-/// A single Pokemon-styled character representing a Claude Code session.
-/// Contains: body sprite, status icon, project label, and hello bubble.
+/// A character card representing a Claude Code session.
+/// Contains: body sprite, status icon, project label, and topic labels.
 final class CharacterNode: SKNode {
 
     let sessionID: String
@@ -10,16 +10,14 @@ final class CharacterNode: SKNode {
 
     private let bodySprite: SKSpriteNode
     private let cardBG: SKShapeNode
-    private var glowNode: SKShapeNode?
+    private var glowNode: SKNode?
     private let statusLabel: SKLabelNode
     private let activityWordLabel: SKLabelNode
     private let dividerNode: SKShapeNode
     private let folderPrefixLabel: SKLabelNode
     private let projectLabel: SKLabelNode
     private let topicLabel: SKLabelNode
-    private let helloBubble: SKNode
-    private var helloBubbleBG: SKShapeNode
-    private let helloText: SKLabelNode
+    private let goodbyeLabel: SKLabelNode
 
     /// Track current status to avoid redundant updates.
     private(set) var currentActivity: SessionMonitor.Activity = .sleeping
@@ -86,7 +84,7 @@ final class CharacterNode: SKNode {
         dividerNode.position = CGPoint(x: 0, y: dividerY)
 
         // Project label: "folder:" prefix (dim) + project name (brighter)
-        let projectFontSize = max(size * 0.12, 8)
+        let projectFontSize = max(size * 0.10, 7)
         let projectY = dividerY - size * 0.12
 
         folderPrefixLabel = SKLabelNode(fontNamed: "Menlo")
@@ -116,7 +114,7 @@ final class CharacterNode: SKNode {
         // Topic label (below project label, up to 3 lines)
         topicLabel = SKLabelNode(fontNamed: "Menlo-Bold")
         topicLabel.text = ""
-        topicLabel.fontSize = max(size * 0.13, 9)
+        topicLabel.fontSize = max(size * 0.11, 8)
         topicLabel.fontColor = .init(red: 0.7, green: 0.7, blue: 0.78, alpha: 1)
         topicLabel.numberOfLines = 3
         topicLabel.preferredMaxLayoutWidth = cardW - 20
@@ -125,28 +123,15 @@ final class CharacterNode: SKNode {
         topicLabel.verticalAlignmentMode = .top
         topicLabel.horizontalAlignmentMode = .center
 
-        // Hello bubble (used for goodbye animation)
-        helloText = SKLabelNode(fontNamed: "Menlo")
-        helloText.text = ""
-        helloText.fontSize = 11
-        helloText.fontColor = .init(red: 0.85, green: 0.95, blue: 0.85, alpha: 1)
-        helloText.verticalAlignmentMode = .center
-        helloText.horizontalAlignmentMode = .center
-        helloText.numberOfLines = 0
-        helloText.preferredMaxLayoutWidth = 300
-        helloText.position = CGPoint(x: 0, y: 0)
-
-        helloBubbleBG = SKShapeNode(rectOf: CGSize(width: 100, height: 30), cornerRadius: 6)
-        helloBubbleBG.fillColor = .init(white: 0.08, alpha: 0.92)
-        helloBubbleBG.strokeColor = .init(red: 0.3, green: 0.5, blue: 0.3, alpha: 0.6)
-        helloBubbleBG.lineWidth = 1
-
-        helloBubble = SKNode()
-        helloBubble.position = CGPoint(x: 0, y: spriteY + size * 0.55 + 12)
-        helloBubble.addChild(helloBubbleBG)
-        helloBubble.addChild(helloText)
-        helloBubble.alpha = 0
-        helloBubble.setScale(0.8)
+        // Goodbye label (hidden, shown only during departure animation)
+        goodbyeLabel = SKLabelNode(fontNamed: "Menlo-Bold")
+        goodbyeLabel.text = "Goodbye!"
+        goodbyeLabel.fontSize = max(size * 0.16, 11)
+        goodbyeLabel.fontColor = .init(red: 0.85, green: 0.95, blue: 0.85, alpha: 1)
+        goodbyeLabel.position = CGPoint(x: 0, y: spriteY + size * 0.55 + 12)
+        goodbyeLabel.verticalAlignmentMode = .center
+        goodbyeLabel.horizontalAlignmentMode = .center
+        goodbyeLabel.alpha = 0
 
         super.init()
 
@@ -158,7 +143,12 @@ final class CharacterNode: SKNode {
         addChild(folderPrefixLabel)
         addChild(projectLabel)
         addChild(topicLabel)
-        addChild(helloBubble)
+        addChild(goodbyeLabel)
+    }
+
+    /// Bounds of the card background in local coordinates, for hit-testing.
+    var cardBounds: CGRect {
+        cardBG.frame
     }
 
     required init?(coder: NSCoder) { fatalError("Not implemented") }
@@ -184,7 +174,6 @@ final class CharacterNode: SKNode {
         case .sleeping:  newEmoji = "💤"; newWord = idleDurationText ?? "idle"
         }
 
-        // Crossfade the status icon and word
         statusLabel.run(.sequence([
             .fadeOut(withDuration: 0.15),
             .run { [weak self] in self?.statusLabel.text = newEmoji },
@@ -203,7 +192,6 @@ final class CharacterNode: SKNode {
             .fadeIn(withDuration: 0.15)
         ]))
 
-        // Asking state glow transitions
         if activity == .asking && previousActivity != .asking {
             showAskingGlow()
         } else if activity != .asking && previousActivity == .asking {
@@ -222,7 +210,6 @@ final class CharacterNode: SKNode {
         let newText = Self.formatIdleDuration(seconds)
         guard newText != idleDurationText else { return }
         idleDurationText = newText
-        // Update the word label live for standby states
         switch currentActivity {
         case .sleeping:
             activityWordLabel.text = newText ?? "idle"
@@ -247,67 +234,63 @@ final class CharacterNode: SKNode {
         return "\(minutes)min"
     }
 
-    /// Update the live log text (stored for goodbye bubble).
-    private(set) var lastOutput: String = ""
-
-    func updateLastOutput(_ output: String) {
-        lastOutput = output
-    }
-
-    private func updateBubbleText(_ text: String) {
-        let display = text.isEmpty ? "..." : text
-        helloText.text = display
-
-        // Resize bubble background to fit text
-        let textFrame = helloText.frame
-        let padding: CGFloat = 10
-        let bgW = max(textFrame.width + padding * 2, 60)
-        let bgH = max(textFrame.height + padding * 2, 24)
-
-        helloBubbleBG.removeFromParent()
-        let newBG = SKShapeNode(rectOf: CGSize(width: bgW, height: bgH), cornerRadius: 6)
-        newBG.fillColor = .init(white: 0.08, alpha: 0.92)
-        newBG.strokeColor = .init(red: 0.3, green: 0.5, blue: 0.3, alpha: 0.6)
-        newBG.lineWidth = 1
-        helloBubble.insertChild(newBG, at: 0)
-        helloBubbleBG = newBG
-    }
-
     // MARK: - Asking State Glow
 
     private func showAskingGlow() {
         guard glowNode == nil else { return }
-        let glow = SKShapeNode(circleOfRadius: characterSize * 0.55)
-        glow.fillColor = .clear
-        glow.strokeColor = .init(red: 1.0, green: 0.55, blue: 0.0, alpha: 0.7)
-        glow.lineWidth = 3
-        glow.glowWidth = 8
-        glow.zPosition = -1
-        glow.alpha = 0
-        addChild(glow)
-        glow.position = bodySprite.position
-        glowNode = glow
 
-        // Fade in, then start pulsing
-        let grow = SKAction.group([
-            .scale(to: 1.15, duration: 0.6),
-            .fadeAlpha(to: 1.0, duration: 0.6)
-        ])
-        grow.timingMode = .easeInEaseOut
-        let shrink = SKAction.group([
-            .scale(to: 1.0, duration: 0.6),
-            .fadeAlpha(to: 0.7, duration: 0.6)
-        ])
-        shrink.timingMode = .easeInEaseOut
-        let pulse = SKAction.repeatForever(.sequence([grow, shrink]))
+        let container = SKNode()
+        container.zPosition = -1.5  // between card bg (-2) and body
+        container.alpha = 0
 
-        glow.run(.sequence([
+        // Card dimensions matching cardBG
+        let cardW = characterSize * 2.0
+        let cardH = characterSize * 2.6
+        let cornerR: CGFloat = 8
+        let layerCount = 14
+        let maxSpread: CGFloat = 18
+
+        // Concentric rounded-rect layers with decreasing opacity
+        for i in (1...layerCount).reversed() {
+            let spread = maxSpread * CGFloat(i) / CGFloat(layerCount)
+            let layerW = cardW + spread * 2
+            let layerH = cardH + spread * 2
+            let layerR = cornerR + spread * 0.5
+
+            let layer = SKShapeNode(rectOf: CGSize(width: layerW, height: layerH), cornerRadius: layerR)
+            layer.fillColor = .clear
+            // Quadratic falloff: brighter near card, fading outward
+            let t = 1.0 - CGFloat(i) / CGFloat(layerCount)
+            let layerAlpha = 0.6 * t * t
+            layer.strokeColor = .init(red: 1.0, green: 0.55, blue: 0.0, alpha: layerAlpha)
+            layer.lineWidth = 2
+            layer.glowWidth = 0
+            container.addChild(layer)
+        }
+
+        // Orange border on card itself
+        let border = SKShapeNode(rectOf: CGSize(width: cardW, height: cardH), cornerRadius: cornerR)
+        border.fillColor = .clear
+        border.strokeColor = .init(red: 1.0, green: 0.55, blue: 0.0, alpha: 0.5)
+        border.lineWidth = 1.5
+        container.addChild(border)
+
+        addChild(container)
+        glowNode = container
+
+        // Pulse animation: fade between 0.3 and 1.0 alpha
+        let fadeUp = SKAction.fadeAlpha(to: 1.0, duration: 0.8)
+        fadeUp.timingMode = .easeInEaseOut
+        let fadeDown = SKAction.fadeAlpha(to: 0.5, duration: 0.8)
+        fadeDown.timingMode = .easeInEaseOut
+        let pulse = SKAction.repeatForever(.sequence([fadeUp, fadeDown]))
+
+        container.run(.sequence([
             .fadeIn(withDuration: 0.3),
             pulse
         ]), withKey: "askingGlow")
 
-        // Card border to orange
-        cardBG.strokeColor = .init(red: 1.0, green: 0.55, blue: 0.0, alpha: 0.6)
+        cardBG.strokeColor = .init(red: 1.0, green: 0.55, blue: 0.0, alpha: 0.5)
     }
 
     private func hideAskingGlow() {
@@ -320,13 +303,11 @@ final class CharacterNode: SKNode {
                 self?.glowNode = nil
             }
         ]))
-        // Restore card border to default gray
         cardBG.strokeColor = .init(red: 0.3, green: 0.3, blue: 0.4, alpha: 0.4)
     }
 
     // MARK: - Lifecycle Animations
 
-    /// Subtle idle breathing — body gently scales up and down.
     private func startBreathing() {
         let breathe = SKAction.sequence([
             .scaleY(to: 1.03, duration: 1.8),
@@ -334,7 +315,6 @@ final class CharacterNode: SKNode {
         ])
         bodySprite.run(.repeatForever(breathe), withKey: "breathing")
 
-        // Slight vertical bob on the whole node
         let bob = SKAction.sequence([
             .moveBy(x: 0, y: 2, duration: 1.8),
             .moveBy(x: 0, y: -2, duration: 1.8)
@@ -347,7 +327,6 @@ final class CharacterNode: SKNode {
         bodySprite.removeAction(forKey: "bobbing")
     }
 
-    /// Fade in when a new session appears.
     func animateAppear() {
         alpha = 0
         setScale(0.5)
@@ -363,13 +342,7 @@ final class CharacterNode: SKNode {
     /// Show "Goodbye!" for 5 seconds, then fade out. Calls completion when done.
     func animateDisappear(completion: @escaping () -> Void) {
         stopBreathing()
-
-        // Show goodbye text in the hello bubble
-        helloText.text = "Goodbye!"
-        updateBubbleText("Goodbye!")
-        helloBubble.removeAllActions()
-        helloBubble.alpha = 1
-        helloBubble.setScale(1.0)
+        goodbyeLabel.run(.fadeIn(withDuration: 0.3))
 
         run(.sequence([
             .wait(forDuration: 5.0),
@@ -378,8 +351,6 @@ final class CharacterNode: SKNode {
         ]))
     }
 
-    /// Rescale the entire node to display at a new effective size.
-    /// Skips helloBubble to avoid conflicting with its show/hide animations.
     func rescale(to newSize: CGFloat) {
         let s = newSize / characterSize
         cardBG.setScale(s)
@@ -390,6 +361,7 @@ final class CharacterNode: SKNode {
         folderPrefixLabel.setScale(s)
         projectLabel.setScale(s)
         topicLabel.setScale(s)
+        goodbyeLabel.setScale(s)
         glowNode?.setScale(s)
     }
 }

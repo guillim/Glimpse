@@ -2,7 +2,7 @@
 import Foundation
 
 /// Monitors active Claude Code sessions by scanning ~/.claude/ JSONL log files.
-/// Polls every 5 seconds and notifies a delegate of session changes.
+/// Polls every 2 seconds and notifies via callback on session changes.
 final class SessionMonitor {
 
     /// Activity state for a single Claude Code session.
@@ -21,27 +21,15 @@ final class SessionMonitor {
     /// Snapshot of a discovered session.
     struct Session: Equatable {
         let id: String            // JSONL filename (UUID)
-        let projectName: String   // Extracted from parent directory name ("dir: background")
-        let projectDirName: String // Raw encoded dir name for path reconstruction
+        let projectName: String   // Extracted from parent directory name
         let activity: Activity
-        let topic: String         // Short summary of current goal (from last user message)
-        let lastOutput: String    // Last few lines of assistant output (for live log bubble)
+        let topics: [String]      // Last up-to-3 user input topics (oldest first)
         let lastModified: Date
         /// How long (in seconds) the session has been idle (0 when actively producing output).
         let idleDuration: TimeInterval
 
-        /// The tty device path of the claude process for this session (e.g. "/dev/ttys004").
-        /// Used for iTerm2 tab focusing. Nil if we couldn't match.
-        let tty: String?
-
-        /// Reconstruct the real project path from the encoded directory name.
-        /// "-Users-gui-github-background" → "/Users/gui/github/background"
-        var projectPath: String {
-            "/" + projectDirName.split(separator: "-").joined(separator: "/")
-        }
-
         static func == (lhs: Session, rhs: Session) -> Bool {
-            lhs.id == rhs.id && lhs.activity == rhs.activity && lhs.topic == rhs.topic
+            lhs.id == rhs.id && lhs.activity == rhs.activity && lhs.topics == rhs.topics
         }
     }
 
@@ -66,7 +54,6 @@ final class SessionMonitor {
     /// Start polling every 2 seconds.
     func start() {
         stop()
-        // Fire immediately, then every 2s.
         scan()
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.scan()
@@ -108,26 +95,16 @@ final class SessionMonitor {
         var sessions: [Session] = []
         let now = Date()
 
-        // Build map of active sessions from the PID registry (~/.claude/sessions/*.json).
-        // Includes PID, tty, and cwd for each running session.
-        let sessionProcesses = Self.activeSessionProcesses()
-        let activeSessionIDs = Set(sessionProcesses.keys)
+        let activeSessionIDs = Self.activeSessionIDs()
 
         for dirURL in projectDirs {
             let isDir = (try? dirURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
-            if !isDir {
-                continue
-            }
-
-            // Skip "memory" directories
+            if !isDir { continue }
             if dirURL.lastPathComponent == "memory" { continue }
 
             let projectName = Self.extractProjectName(from: dirURL.lastPathComponent)
 
-            // Depth-1 scan: only files directly inside the project directory are listed here.
-            // Subagent sessions live in subagents/ subdirectories and are naturally excluded
-            // by this depth-1 scan. The .jsonl extension filter below handles any remaining
-            // non-session entries (e.g. bare directories at depth 1).
+            // Depth-1 scan: subagent sessions in subagents/ subdirectories are naturally excluded.
             guard let files = try? fm.contentsOfDirectory(
                 at: dirURL,
                 includingPropertiesForKeys: [.contentModificationDateKey],
@@ -137,39 +114,36 @@ final class SessionMonitor {
             }
 
             for fileURL in files {
-                // Extension filter: excludes directories (subagents/) and non-JSONL files.
                 guard fileURL.pathExtension == "jsonl" else { continue }
 
                 guard let attrs = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]),
                       let modified = attrs.contentModificationDate else { continue }
 
-                let age = now.timeIntervalSince(modified)
-
                 let sessionID = fileURL.deletingPathExtension().lastPathComponent
-
-                // Only show sessions with a running Claude process.
                 guard activeSessionIDs.contains(sessionID) else { continue }
 
-                // Skip re-parsing if file size hasn't changed since last scan.
                 let fileSize = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(UInt64.init) ?? 0
                 let result: ScanResult
                 if let cached = scanCache[sessionID], cached.fileSize == fileSize {
                     result = cached.result
                 } else {
-                    result = Self.classifyActivityAndTopic(fileURL: fileURL, lastModified: modified, now: now)
+                    var fresh = Self.classifyActivity(fileURL: fileURL, lastModified: modified, now: now)
+                    // Carry forward previous topics when the new scan found none
+                    // (assistant output can push user messages out of the tail window)
+                    if fresh.topics.isEmpty, let cached = scanCache[sessionID], !cached.result.topics.isEmpty {
+                        fresh = ScanResult(activity: fresh.activity, topics: cached.result.topics)
+                    }
+                    result = fresh
                     scanCache[sessionID] = (fileSize: fileSize, result: result)
                 }
 
                 sessions.append(Session(
                     id: sessionID,
                     projectName: projectName,
-                    projectDirName: dirURL.lastPathComponent,
                     activity: result.activity,
-                    topic: result.topic,
-                    lastOutput: result.lastOutput,
+                    topics: result.topics,
                     lastModified: modified,
-                    idleDuration: age,
-                    tty: sessionProcesses[sessionID]?.tty
+                    idleDuration: now.timeIntervalSince(modified)
                 ))
             }
         }
@@ -182,122 +156,144 @@ final class SessionMonitor {
     }
 
     /// Extract human-readable project name from encoded directory name.
-    /// "-Users-gui-github-background" → "dir: background"
+    /// "-Users-gui-github-background" → "background"
     static func extractProjectName(from dirName: String) -> String {
         let components = dirName.split(separator: "-").map(String.init)
-        let name = components.last ?? dirName
-        return "dir: \(name)"
+        return components.last ?? dirName
     }
 
-    /// Truncate output to fit in the bubble: max N lines, max M chars.
-    static func truncateOutput(_ text: String, maxLines: Int, maxChars: Int) -> String {
-        let lines = text.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-            .suffix(maxLines)
-        var result = lines.joined(separator: "\n")
-        if result.count > maxChars {
-            result = String(result.suffix(maxChars - 3))
-            // Trim to word boundary
-            if let spaceIdx = result.firstIndex(of: " ") {
-                result = "..." + String(result[spaceIdx...])
-            }
-        }
-        return result
-    }
+    // MARK: - Smart Topic Extraction
 
-    /// Extract a short topic (1-3 words) from the user's message.
-    /// Takes the first few meaningful words, stripping common prefixes.
+    /// Filler prefixes to strip (longest first to avoid partial matches).
+    private static let fillerPrefixes = [
+        "i'd like to", "i want to", "i need to",
+        "could you", "would you", "can you",
+        "please", "let's", "okay", "hey", "ok", "so"
+    ]
+
+    /// Stop words to drop when collecting meaningful words.
+    private static let stopWords: Set<String> = [
+        "the", "a", "an", "in", "to", "for", "from", "with",
+        "on", "at", "of", "by", "is", "are", "was", "it", "that", "this",
+        "me", "my", "and", "or", "but", "not", "just", "also", "some", "all"
+    ]
+
+    /// Action verbs to anchor topic extraction.
+    private static let actionVerbs: Set<String> = [
+        "fix", "add", "improve", "refactor", "update", "remove", "create", "implement",
+        "build", "change", "move", "rename", "replace", "delete", "write", "make", "set",
+        "configure", "enable", "disable", "debug", "test", "check", "find", "search",
+        "explore", "review", "clean", "optimize", "merge", "deploy", "push", "pull",
+        "revert", "undo", "upgrade", "install", "setup", "migrate", "convert", "extract",
+        "split", "combine", "integrate", "connect", "disconnect", "handle", "support",
+        "allow", "prevent", "show", "hide", "toggle", "resize", "format", "sort", "filter",
+        "validate", "parse", "serialize", "decode", "encode", "fetch", "send", "upload",
+        "download", "run", "start", "stop", "restart", "launch", "open", "close", "log",
+        "monitor", "track", "watch", "ask"
+    ]
+
+    /// Extract a short topic from the user's message using keyword-based extraction.
+    /// Strips filler prefixes, finds the action verb and its object, or falls back
+    /// to meaningful-word extraction when no verb is found.
     static func extractTopic(from message: String) -> String {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
 
-        // Take first line only
         let firstLine = trimmed.components(separatedBy: .newlines).first ?? trimmed
 
-        // Split into words, take first 3 meaningful ones
-        let words = firstLine.components(separatedBy: .whitespaces)
-            .filter { !$0.isEmpty }
-            .prefix(4)
-
-        let topic = words.joined(separator: " ")
-
-        // Cap at 30 chars
-        if topic.count > 30 {
-            return String(topic.prefix(27)) + "..."
+        // Strip leading prompt characters
+        var stripped = firstLine
+        while let first = stripped.unicodeScalars.first,
+              first == "\u{276F}" || first == ">" || first == "$" || first == "%" {
+            stripped = String(stripped.dropFirst()).trimmingCharacters(in: .whitespaces)
         }
-        return topic
+
+        // Strip filler prefixes iteratively
+        var didStrip = true
+        while didStrip {
+            didStrip = false
+            let lower = stripped.lowercased()
+            for prefix in fillerPrefixes {
+                if lower.hasPrefix(prefix) {
+                    stripped = String(stripped.dropFirst(prefix.count))
+                        .trimmingCharacters(in: .whitespaces)
+                    didStrip = true
+                    break
+                }
+            }
+        }
+
+        guard !stripped.isEmpty else { return "" }
+
+        let words = stripped.lowercased()
+            .components(separatedBy: .whitespaces)
+            .filter { !$0.isEmpty }
+
+        guard !words.isEmpty else { return "" }
+
+        // Scan for first action verb
+        if let verbIndex = words.firstIndex(where: { actionVerbs.contains($0) }) {
+            var collected = [words[verbIndex]]
+            for word in words[(verbIndex + 1)...] {
+                if collected.count >= 4 { break }
+                if !stopWords.contains(word) {
+                    collected.append(word)
+                }
+            }
+            return capTopic(collected.joined(separator: " "))
+        }
+
+        // No verb found: drop stop words, take first 4 remaining
+        let meaningful = words.filter { !stopWords.contains($0) }.prefix(4)
+        return capTopic(meaningful.joined(separator: " "))
+    }
+
+    /// Cap topic at 30 characters, truncating to last complete word within 27 chars.
+    private static func capTopic(_ topic: String) -> String {
+        guard topic.count > 30 else { return topic }
+        let truncated = String(topic.prefix(27))
+        if let lastSpace = truncated.lastIndex(of: " ") {
+            return String(truncated[..<lastSpace]) + "..."
+        }
+        return truncated + "..."
     }
 
     /// Read ~/.claude/sessions/*.json to get session IDs of currently running Claude processes.
-    /// Info about a running Claude session process.
-    struct SessionProcess {
-        let pid: Int
-        let sessionId: String
-        let cwd: String
-        let tty: String?  // e.g. "/dev/ttys004"
-    }
-
-    /// Read ~/.claude/sessions/*.json to get running session PIDs, IDs, and resolve their ttys.
-    private static func activeSessionProcesses() -> [String: SessionProcess] {
+    private static func activeSessionIDs() -> Set<String> {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let sessionsDir = home.appendingPathComponent(".claude/sessions", isDirectory: true)
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: sessionsDir,
             includingPropertiesForKeys: nil,
             options: .skipsHiddenFiles
-        ) else { return [:] }
+        ) else { return [] }
 
-        var result: [String: SessionProcess] = [:]
+        var result = Set<String>()
         for file in files where file.pathExtension == "json" {
             guard let data = try? Data(contentsOf: file),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let sessionId = json["sessionId"] as? String,
-                  let pid = json["pid"] as? Int,
-                  let cwd = json["cwd"] as? String else { continue }
+                  let pid = json["pid"] as? Int else { continue }
 
-            // Resolve tty from PID via ps
-            let tty = resolveTty(pid: pid)
+            guard kill(pid_t(pid), 0) == 0 else {
+                try? FileManager.default.removeItem(at: file)
+                continue
+            }
 
-            result[sessionId] = SessionProcess(pid: pid, sessionId: sessionId, cwd: cwd, tty: tty)
+            result.insert(sessionId)
         }
         return result
     }
 
-    /// Get active session IDs (convenience wrapper).
-    private static func activeSessionIDs() -> Set<String> {
-        Set(activeSessionProcesses().keys)
-    }
-
-    /// Resolve the tty of a process via ps.
-    private static func resolveTty(pid: Int) -> String? {
-        let pipe = Pipe()
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/bin/ps")
-        proc.arguments = ["-o", "tty=", "-p", "\(pid)"]
-        proc.standardOutput = pipe
-        proc.standardError = FileHandle.nullDevice
-        do { try proc.run(); proc.waitUntilExit() } catch { return nil }
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else { return nil }
-        let tty = output.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !tty.isEmpty, tty != "??" else { return nil }
-        return tty.hasPrefix("/dev/") ? tty : "/dev/\(tty)"
-    }
-
     struct ScanResult {
         let activity: Activity
-        let topic: String
-        let lastOutput: String
+        let topics: [String]
     }
 
-    /// Read last ~20 lines of a JSONL file, classify activity, extract topic, and last output.
-    /// Uses FileHandle to read only the tail of potentially large files.
-    static func classifyActivityAndTopic(fileURL: URL, lastModified: Date, now: Date) -> ScanResult {
-        let empty = ScanResult(activity: .sleeping, topic: "", lastOutput: "")
+    /// Read tail of a JSONL file, classify activity and extract topics.
+    static func classifyActivity(fileURL: URL, lastModified: Date, now: Date) -> ScanResult {
+        let empty = ScanResult(activity: .sleeping, topics: [])
 
-        // Read only the last ~32KB to avoid loading multi-MB session logs entirely.
         let tailBytes = 32 * 1024
         guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return empty }
         defer { try? handle.close() }
@@ -310,17 +306,16 @@ final class SessionMonitor {
             return empty
         }
 
-        // Get last ~20 non-empty lines (more for topic extraction)
         let lines = content.components(separatedBy: .newlines)
             .suffix(30)
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
             .suffix(20)
 
         var activity: Activity = .sleeping
-        var topic: String = ""
-        var lastOutput: String = ""
+        var topics: [String] = []
 
-        // Walk backwards to find the most recent meaningful message
+        var sawSessionReset = false
+
         for line in lines.reversed() {
             guard let jsonData = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
@@ -329,31 +324,27 @@ final class SessionMonitor {
 
             let type = json["type"] as? String
 
-            // Extract topic from the most recent user message (text, not tool results)
-            if topic.isEmpty, type == "user",
-               let message = json["message"] as? [String: Any],
-               let msgContent = message["content"] as? String {
-                topic = Self.extractTopic(from: msgContent)
+            // Detect session-reset events before we classify activity.
+            if activity == .sleeping {
+                if type == "queue-operation" {
+                    sawSessionReset = true
+                } else if type == "system" {
+                    let content = json["content"] as? String ?? ""
+                    if content.contains("compacted") || content.contains("Conversation") {
+                        sawSessionReset = true
+                    }
+                }
             }
 
-            // Also handle user messages with role/content structure
-            if topic.isEmpty, type == "user",
-               let message = json["message"] as? [String: Any],
-               message["role"] as? String == "user",
-               let msgContent = message["content"] as? String {
-                topic = Self.extractTopic(from: msgContent)
-            }
-
-            // Extract last assistant text output for the live log bubble
-            if lastOutput.isEmpty, type == "assistant",
-               let message = json["message"] as? [String: Any],
-               let blocks = message["content"] as? [[String: Any]] {
-                for block in blocks {
-                    if block["type"] as? String == "text",
-                       let text = block["text"] as? String,
-                       !text.isEmpty {
-                        lastOutput = Self.truncateOutput(text, maxLines: 4, maxChars: 200)
-                        break
+            // Extract topics from user messages (collect up to 3, walking backwards)
+            if topics.count < 3, type == "user",
+               let message = json["message"] as? [String: Any] {
+                let msgContent = message["content"] as? String
+                    ?? (message["role"] as? String == "user" ? message["content"] as? String : nil)
+                if let content = msgContent {
+                    let extracted = Self.extractTopic(from: content)
+                    if !extracted.isEmpty {
+                        topics.append(extracted)
                     }
                 }
             }
@@ -361,22 +352,22 @@ final class SessionMonitor {
             // Skip if we already classified activity
             guard activity == .sleeping else { continue }
 
-            // Check for assistant end_turn first — this takes priority over content classification.
-            // Distinguish "asking a question" from "finished task".
+            // Check for assistant end_turn — distinguish asking vs done.
             if type == "assistant",
                let message = json["message"] as? [String: Any],
                message["stop_reason"] as? String == "end_turn" {
-                // Check if the agent is asking a question
+                if sawSessionReset {
+                    activity = .sleeping
+                    break
+                }
                 var isAsking = false
                 if let blocks = message["content"] as? [[String: Any]] {
                     for block in blocks {
-                        // AskUserQuestion tool means it's definitely asking
                         if block["type"] as? String == "tool_use",
                            block["name"] as? String == "AskUserQuestion" {
                             isAsking = true
                             break
                         }
-                        // Text ending with "?" suggests a question
                         if block["type"] as? String == "text",
                            let text = block["text"] as? String,
                            text.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("?") {
@@ -393,7 +384,6 @@ final class SessionMonitor {
                let message = json["message"] as? [String: Any],
                let blocks = message["content"] as? [[String: Any]] {
 
-                // Classify by tool_use blocks (priority: Bash > Agent > Web > Write > Read)
                 let toolNames = blocks.compactMap { block -> String? in
                     guard block["type"] as? String == "tool_use" else { return nil }
                     return block["name"] as? String
@@ -415,7 +405,6 @@ final class SessionMonitor {
                         activity = .thinking
                     }
                 } else {
-                    // Text-only message, no tool_use → thinking
                     let hasText = blocks.contains { $0["type"] as? String == "text" }
                     if hasText {
                         activity = .thinking
@@ -429,6 +418,6 @@ final class SessionMonitor {
             }
         }
 
-        return ScanResult(activity: activity, topic: topic, lastOutput: lastOutput)
+        return ScanResult(activity: activity, topics: topics.reversed())
     }
 }

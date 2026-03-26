@@ -9,29 +9,23 @@
 /* Begin PBXBuildFile section */
 		A1000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001 /* AppDelegate.swift */; };
 		A1000002 /* DesktopWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000002 /* DesktopWindowController.swift */; };
-		A1000003 /* HeadTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000003 /* HeadTracker.swift */; };
-		A1000004 /* SceneViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000004 /* SceneViewController.swift */; };
 		A1000005 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000006 /* main.swift */; };
 		A1000006 /* SessionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000007 /* SessionMonitor.swift */; };
 		A1000007 /* CharacterGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000008 /* CharacterGenerator.swift */; };
 		A1000008 /* CharacterNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000009 /* CharacterNode.swift */; };
-		A1000009 /* PokemonScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000010 /* PokemonScene.swift */; };
-		AB000001 /* models in Resources */ = {isa = PBXBuildFile; fileRef = AB000002 /* models */; };
+		A1000009 /* AgentMonitorScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000010 /* AgentMonitorScene.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		A2000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A2000002 /* DesktopWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopWindowController.swift; sourceTree = "<group>"; };
-		A2000003 /* HeadTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeadTracker.swift; sourceTree = "<group>"; };
-		A2000004 /* SceneViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneViewController.swift; sourceTree = "<group>"; };
 		A2000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A2000006 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		A2000007 /* SessionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitor.swift; sourceTree = "<group>"; };
 		A2000008 /* CharacterGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterGenerator.swift; sourceTree = "<group>"; };
 		A2000009 /* CharacterNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterNode.swift; sourceTree = "<group>"; };
-		A2000010 /* PokemonScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PokemonScene.swift; sourceTree = "<group>"; };
+		A2000010 /* AgentMonitorScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentMonitorScene.swift; sourceTree = "<group>"; };
 		A3000001 /* Glimpse.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Glimpse.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		AB000002 /* models */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "public/models"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -58,14 +52,12 @@
 			children = (
 				A2000001 /* AppDelegate.swift */,
 				A2000002 /* DesktopWindowController.swift */,
-				A2000003 /* HeadTracker.swift */,
-				A2000004 /* SceneViewController.swift */,
 				A2000005 /* Info.plist */,
 				A2000006 /* main.swift */,
 				A2000007 /* SessionMonitor.swift */,
 				A2000008 /* CharacterGenerator.swift */,
 			A2000009 /* CharacterNode.swift */,
-			A2000010 /* PokemonScene.swift */,
+			A2000010 /* AgentMonitorScene.swift */,
 			);
 			path = Glimpse;
 			sourceTree = "<group>";
@@ -75,7 +67,6 @@
 			children = (
 				A5000002 /* Glimpse */,
 				A5000001 /* Products */,
-				AB000002 /* models */,
 			);
 			sourceTree = "<group>";
 		};
@@ -133,7 +124,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AB000001 /* models in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -146,13 +136,11 @@
 			files = (
 				A1000001 /* AppDelegate.swift in Sources */,
 				A1000002 /* DesktopWindowController.swift in Sources */,
-				A1000003 /* HeadTracker.swift in Sources */,
-				A1000004 /* SceneViewController.swift in Sources */,
 				A1000005 /* main.swift in Sources */,
 				A1000006 /* SessionMonitor.swift in Sources */,
 				A1000007 /* CharacterGenerator.swift in Sources */,
 			A1000008 /* CharacterNode.swift in Sources */,
-			A1000009 /* PokemonScene.swift in Sources */,
+			A1000009 /* AgentMonitorScene.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

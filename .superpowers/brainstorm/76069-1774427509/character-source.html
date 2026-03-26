@@ -1,0 +1,42 @@
+<h2>Character Asset Source</h2>
+<p class="subtitle">How should we get the pixel art Pokemon sprites into the app?</p>
+
+<div class="options">
+  <div class="option" data-choice="bundled-png" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Bundled PNG Sprites</h3>
+      <p>Ship pre-made pixel art PNGs in the app bundle. Each character is a sprite sheet with idle + status variants (reading, talking, sleeping, question). I'd create these as simple colored shapes in code or you'd source them externally.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Fast rendering, no generation overhead</li><li>Pixel-perfect control</li><li>Zero network dependency</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Need to create/find ~10+ sprite sheets</li><li>Adding new characters = new assets</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="procedural" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Procedurally Generated in Code</h3>
+      <p>Draw characters programmatically using Core Graphics — colored shapes, eyes, features built from primitives. Each session gets a unique character generated from a seed (session ID). Pokemon-<em>styled</em> but original.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Infinite unique characters</li><li>No external assets needed</li><li>Tiny memory footprint</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Won't look like actual Pokemon</li><li>More complex code</li><li>Limited artistic quality</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="hybrid" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Hybrid: Bundled Base + Code Overlays</h3>
+      <p>Bundle a set of base character PNGs (Pikachu, Charmander, Bulbasaur, etc.) and draw status indicators (book, speech bubble, zzz, question mark) programmatically as overlays. Characters cycle through the roster as sessions appear.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Real Pokemon look for base characters</li><li>Status overlays are flexible and lightweight</li><li>Easy to add more characters later</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Need to source/create base sprites</li><li>Limited roster (but expandable)</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:16px;">Recommendation: <strong>C (Hybrid)</strong> — real Pokemon base sprites give the authentic feel, while code-drawn overlays keep status indicators flexible without needing separate sprite sheets for every state.</p>

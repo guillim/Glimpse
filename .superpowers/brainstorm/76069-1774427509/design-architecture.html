@@ -1,0 +1,84 @@
+<h2>Design — Section 1: Architecture Overview</h2>
+<p class="subtitle">How the pieces fit together</p>
+
+<div class="mockup">
+  <div class="mockup-header">System Architecture</div>
+  <div class="mockup-body" style="background:#0d1117;color:#c9d1d9;font-family:monospace;font-size:12px;padding:24px;line-height:1.8;">
+    <pre style="color:#c9d1d9;margin:0;">
+┌─────────────────────────────────────────────────────────┐
+│                    AppDelegate                           │
+│  ┌──────────┐    ┌──────────────┐    ┌───────────────┐  │
+│  │ Menu Bar │───▶│ Theme Switch │───▶│ View Swap     │  │
+│  │  Item    │    │   Logic      │    │ SCNView ↔     │  │
+│  └──────────┘    └──────────────┘    │ SKView        │  │
+│                                      └───────┬───────┘  │
+│                                              │          │
+│  ┌───────────────────────────────────────────▼───────┐  │
+│  │          DesktopWindowController                   │  │
+│  │  contentView = SCNView (3D themes)                │  │
+│  │              OR SKView  (Pokemon theme)            │  │
+│  └───────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+
+┌─ Pokemon Theme (new) ────────────────────────────────────┐
+│                                                          │
+│  ┌──────────────────┐     ┌────────────────────────┐    │
+│  │  PokemonScene    │◀────│  SessionMonitor        │    │
+│  │  (SKScene)       │     │  (polls ~/.claude/)    │    │
+│  │                  │     │                        │    │
+│  │  • Dark BG       │     │  • Scans every 5s      │    │
+│  │  • Character     │     │  • Parses JSONL logs   │    │
+│  │    grid nodes    │     │  • Detects activity:   │    │
+│  │  • Status icons  │     │    read/talk/wait/idle │    │
+│  │  • Hello bubble  │     │  • Session lifecycle   │    │
+│  │  • Empty message │     └────────────────────────┘    │
+│  └────────┬─────────┘                                    │
+│           │                                              │
+│  ┌────────▼─────────┐     ┌────────────────────────┐    │
+│  │ CharacterNode    │     │  CharacterGenerator    │    │
+│  │ (SKNode subclass)│     │  (Core Graphics)       │    │
+│  │                  │◀────│                        │    │
+│  │ • Body sprite    │     │  • Seed from sessionID │    │
+│  │ • Status overlay │     │  • Body shape/color    │    │
+│  │ • Label text     │     │  • Eyes, ears, tail    │    │
+│  │ • Hello bubble   │     │  • Unique per session  │    │
+│  │ • Fade in/out    │     └────────────────────────┘    │
+│  └──────────────────┘                                    │
+│                                                          │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │  HeadTracker (existing)                           │   │
+│  │  → gaze X,Y mapped to screen → nearest character │   │
+│  │  → triggers hello on gaze-enter (300ms dwell)    │   │
+│  └──────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────┘
+    </pre>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <h3>Key Components</h3>
+  <table style="width:100%;border-collapse:collapse;color:#c9d1d9;font-size:13px;">
+    <tr style="border-bottom:1px solid #333;">
+      <td style="padding:8px;font-weight:bold;color:#ffcb05;">PokemonScene</td>
+      <td style="padding:8px;">SKScene subclass. Owns the grid layout, character nodes, empty-state message. Updates from HeadTracker in <code>update(_:)</code> callback.</td>
+    </tr>
+    <tr style="border-bottom:1px solid #333;">
+      <td style="padding:8px;font-weight:bold;color:#ff6b6b;">SessionMonitor</td>
+      <td style="padding:8px;">Background timer (5s interval). Scans <code>~/.claude/projects/</code> for active JSONL sessions. Parses last few lines to determine activity state. Notifies PokemonScene of changes.</td>
+    </tr>
+    <tr style="border-bottom:1px solid #333;">
+      <td style="padding:8px;font-weight:bold;color:#4ecdc4;">CharacterNode</td>
+      <td style="padding:8px;">SKNode subclass wrapping: body sprite, status icon, label, hello bubble. Handles its own animations (status transitions, hello fade, goodbye fadeout).</td>
+    </tr>
+    <tr style="border-bottom:1px solid #333;">
+      <td style="padding:8px;font-weight:bold;color:#a78bfa;">CharacterGenerator</td>
+      <td style="padding:8px;">Pure function: sessionID → CGImage. Uses Core Graphics to draw a unique Pokemon-styled creature from a deterministic seed. Same session always gets same character.</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;font-weight:bold;color:#34d399;">View Swap</td>
+      <td style="padding:8px;">When switching to/from Pokemon theme, DesktopWindowController swaps its contentView between SCNView and SKView. Other themes unchanged.</td>
+    </tr>
+  </table>
+</div>
+
+<p class="subtitle" style="margin-top:16px;">Does this architecture look right? Next I'll detail the session monitoring and character generation.</p>

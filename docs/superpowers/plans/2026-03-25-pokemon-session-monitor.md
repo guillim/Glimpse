@@ -2,11 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a SpriteKit-based theme to Glimpse that shows procedurally generated Pokemon-styled characters, one per active Claude Code session, with live status updates and head-tracking gaze interaction.
+**Goal:** Add a SpriteKit-based theme to Glimpse that shows procedurally generated Pokemon-styled characters, one per active Claude Code session, with live status updates.
 
-**Architecture:** New SpriteKit scene (`PokemonScene`) swapped in via `DesktopWindowController` when the Pokemon theme is selected. A `SessionMonitor` polls `~/.claude/` JSONL logs every 5 seconds to discover sessions and classify activity. `CharacterGenerator` produces unique creatures from session IDs via Core Graphics. `CharacterNode` wraps each character's sprite, status icon, label, and hello bubble. HeadTracker is reused with zero changes.
+**Architecture:** New SpriteKit scene (`PokemonScene`) swapped in via `DesktopWindowController` when the Pokemon theme is selected. A `SessionMonitor` polls `~/.claude/` JSONL logs every 2 seconds to discover sessions and classify activity. `CharacterGenerator` produces unique creatures from session IDs via Core Graphics. `CharacterNode` wraps each character's sprite, status icon, label, and goodbye bubble.
 
-**Tech Stack:** Swift, SpriteKit (SKScene/SKSpriteNode/SKLabelNode), Core Graphics (CGContext), FileManager for log scanning, existing HeadTracker API.
+**Tech Stack:** Swift, SpriteKit (SKScene/SKSpriteNode/SKLabelNode), Core Graphics (CGContext), FileManager for log scanning.
+
+> **Note:** Head tracking and gaze interaction were removed in a later cleanup to reduce CPU/RAM usage. Some task steps below reference gaze code that no longer exists.
 
 **Spec:** `docs/superpowers/specs/2026-03-25-pokemon-session-monitor-design.md`
 

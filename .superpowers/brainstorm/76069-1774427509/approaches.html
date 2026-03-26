@@ -1,0 +1,69 @@
+<h2>Architecture Approaches</h2>
+<p class="subtitle">Three ways to build the Pokemon session monitor theme. All share the same features — they differ in rendering strategy.</p>
+
+<div class="options">
+  <div class="option" data-choice="spritekit" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>SpriteKit Scene (Recommended)</h3>
+      <p>Add the theme as an <code>SKScene</code> rendered inside an <code>SKView</code>, replacing the <code>SCNView</code> when this theme is active. SpriteKit is Apple's 2D engine — purpose-built for sprites, text labels, and 2D animations.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>Lowest RAM — no 3D pipeline, no depth buffer, no lighting</li>
+          <li>Native sprite nodes, text nodes, animation actions</li>
+          <li>Built-in physics-free layout (no SceneKit overhead)</li>
+          <li>GPU-accelerated but lightweight</li>
+          <li>~60fps trivially for 2D sprites</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>New view type — need to swap SCNView ↔ SKView when switching themes</li>
+          <li>Head tracking integration needs adapter (currently tied to SCNSceneRendererDelegate)</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="scenekit-planes" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>SceneKit with Flat Planes</h3>
+      <p>Stay in SceneKit — render characters as <code>SCNPlane</code> nodes with <code>CGImage</code> textures. Draw sprites to bitmaps via Core Graphics, apply as materials.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>No view swapping — same SCNView for all themes</li>
+          <li>Head tracking works as-is</li>
+          <li>Can still use 3D camera for subtle parallax on sprites</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>More RAM — full 3D pipeline running for 2D content</li>
+          <li>Text rendering via SCNText or texture bitmaps (clunky)</li>
+          <li>Animations need manual SCNAction choreography</li>
+          <li>Depth buffer, lighting pipeline all running unnecessarily</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="calayer" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Core Animation (CALayer)</h3>
+      <p>Skip game engines entirely. Use <code>CALayer</code> sublayers with Core Graphics–drawn images. Animate with <code>CABasicAnimation</code>. Lightest possible approach.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>Absolute minimum RAM — no game engine at all</li>
+          <li>Native text rendering (CATextLayer)</li>
+          <li>Simplest code for static + simple animations</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>No game loop — timer-based updates feel janky for continuous animation</li>
+          <li>Complex animations are painful in CA</li>
+          <li>Head tracking per-frame updates fight CA's implicit animation model</li>
+          <li>Completely different rendering path from all other themes</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:16px;"><strong>Recommendation: A (SpriteKit)</strong> — It's the right tool for 2D sprites. The view-swapping cost is a one-time engineering task, and the RAM/performance benefits over SceneKit-for-2D are significant. CALayer is tempting but breaks down for continuous head-tracking-driven updates.</p>

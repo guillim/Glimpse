@@ -1,0 +1,131 @@
+<h2>Design — Section 4: Gaze Interaction & View Swapping</h2>
+<p class="subtitle">How head tracking triggers hello, and how we switch between SceneKit and SpriteKit</p>
+
+<div class="section">
+  <h3>Gaze → Character Mapping</h3>
+  <div class="mockup">
+    <div class="mockup-header">Head Tracking Integration</div>
+    <div class="mockup-body" style="background:#0d1117;color:#c9d1d9;font-family:monospace;font-size:12px;padding:20px;line-height:1.6;">
+      <pre style="color:#c9d1d9;margin:0;">
+<span style="color:#ffcb05;">Existing HeadTracker output:</span>
+  offset.x: -1.0 ... +1.0  (left to right)
+  offset.y: -1.0 ... +1.0  (down to up)
+
+<span style="color:#4ecdc4;">Mapping to screen position:</span>
+  gazeX = screenWidth  * 0.5 + offset.x * screenWidth  * 0.5
+  gazeY = screenHeight * 0.5 + offset.y * screenHeight * 0.5
+
+<span style="color:#a78bfa;">Hit testing (per frame in SKScene.update):</span>
+  1. Convert gaze point to scene coordinates
+  2. Find nearest CharacterNode within hitbox radius
+     (hitbox = character size * 1.5 for comfortable targeting)
+  3. If character found AND not already focused:
+     → Start 300ms dwell timer
+  4. If same character still focused after 300ms:
+     → Trigger hello bubble fade-in (0.3s)
+  5. If gaze leaves hitbox:
+     → Cancel dwell timer
+     → Fade out hello bubble (0.3s)
+
+<span style="color:#888;">Performance: distance check is O(n) where n = session count.
+With <20 sessions this is trivial in the frame callback.</span>
+      </pre>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <h3>SpriteKit Head Tracking Adapter</h3>
+  <div class="mockup">
+    <div class="mockup-header">Reusing HeadTracker for SKScene</div>
+    <div class="mockup-body" style="background:#0d1117;color:#c9d1d9;font-family:monospace;font-size:12px;padding:20px;line-height:1.6;">
+      <pre style="color:#c9d1d9;margin:0;">
+<span style="color:#ff6b6b;">Current (SceneKit):</span>
+  SCNSceneRendererDelegate.renderer(_:updateAtTime:)
+  → reads HeadTracker.latestOffset
+  → updates SCNCamera position
+
+<span style="color:#4ecdc4;">New (SpriteKit):</span>
+  SKScene.update(_:currentTime)
+  → reads HeadTracker.latestOffset  <span style="color:#888;">// same API!</span>
+  → maps to gaze point
+  → hit-tests characters
+
+<span style="color:#ffcb05;">HeadTracker needs zero changes.</span>
+Both SCNSceneRendererDelegate and SKScene.update
+run once per frame. PokemonScene just reads the
+same latestOffset / latestVelocity properties.
+
+The only difference: SceneKit moves the camera,
+SpriteKit maps to gaze coordinates.
+      </pre>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <h3>View Swapping: SCNView ↔ SKView</h3>
+  <div class="mockup">
+    <div class="mockup-header">Theme Switch Flow</div>
+    <div class="mockup-body" style="background:#0d1117;color:#c9d1d9;font-family:monospace;font-size:12px;padding:20px;line-height:1.6;">
+      <pre style="color:#c9d1d9;margin:0;">
+<span style="color:#ffcb05;">Current architecture (simplified):</span>
+  DesktopWindowController
+    └── contentView = SCNView (always)
+          └── SceneViewController manages it
+
+<span style="color:#4ecdc4;">New architecture:</span>
+  DesktopWindowController
+    └── contentView = SCNView  <span style="color:#888;">← 3D themes (basketball, tree, sea...)</span>
+                   OR SKView   <span style="color:#888;">← Pokemon theme</span>
+
+<span style="color:#a78bfa;">Switch sequence:</span>
+  1. User selects "Pokemon" from menu
+  2. SceneViewController detects it's a SpriteKit theme
+  3. Pause current SCNView rendering
+  4. Create SKView (or reuse cached one)
+  5. Set SKView.presentScene(pokemonScene)
+  6. Swap window.contentView = skView
+  7. Release old SCNScene to free memory
+  8. Start SessionMonitor polling
+
+<span style="color:#ff6b6b;">Switch back to 3D theme:</span>
+  1. Stop SessionMonitor polling
+  2. Swap window.contentView = scnView
+  3. Load new 3D scene as usual
+  4. Release SKScene + SKView
+
+<span style="color:#888;">Both views share the same HeadTracker instance.
+Window properties (level, click-through, etc) unchanged.</span>
+      </pre>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <h3>New Files Summary</h3>
+  <table style="width:100%;border-collapse:collapse;color:#c9d1d9;font-size:13px;">
+    <tr style="border-bottom:1px solid #333;">
+      <td style="padding:8px;font-weight:bold;color:#ffcb05;">PokemonScene.swift</td>
+      <td style="padding:8px;">SKScene subclass. Grid layout, update loop (gaze + status), empty-state label. Entry point for the theme.</td>
+    </tr>
+    <tr style="border-bottom:1px solid #333;">
+      <td style="padding:8px;font-weight:bold;color:#ff6b6b;">SessionMonitor.swift</td>
+      <td style="padding:8px;">Timer-based scanner. Discovers sessions, parses JSONL, classifies activity, notifies PokemonScene via delegate/closure.</td>
+    </tr>
+    <tr style="border-bottom:1px solid #333;">
+      <td style="padding:8px;font-weight:bold;color:#4ecdc4;">CharacterNode.swift</td>
+      <td style="padding:8px;">SKNode subclass. Owns body sprite, status icon, label, hello bubble. Handles animations and state transitions.</td>
+    </tr>
+    <tr style="border-bottom:1px solid #333;">
+      <td style="padding:8px;font-weight:bold;color:#a78bfa;">CharacterGenerator.swift</td>
+      <td style="padding:8px;">Pure function: sessionID → CGImage. Core Graphics drawing of procedural creatures.</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;font-weight:bold;color:#888;">Modified files</td>
+      <td style="padding:8px;">SceneViewController.swift (add Pokemon entry, view swap logic), AppDelegate.swift (menu entry), DesktopWindowController.swift (support SKView as contentView)</td>
+    </tr>
+  </table>
+</div>
+
+<p class="subtitle" style="margin-top:16px;">This completes the design. Does everything look good? If so, I'll write up the full spec document.</p>

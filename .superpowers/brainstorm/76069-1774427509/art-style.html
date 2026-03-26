@@ -1,0 +1,62 @@
+<h2>Character Art Style</h2>
+<p class="subtitle">What pixel art style for the Pokemon characters? This affects how we render them and how much detail we can show for status indicators.</p>
+
+<div class="cards">
+  <div class="card" data-choice="gameboy" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a2e;padding:24px;text-align:center;font-family:monospace;font-size:11px;line-height:1.2;color:#ffcb05;">
+      <pre style="color:#ffcb05;font-size:10px;margin:0;">
+    ⬛⬛⬛⬛⬛
+  ⬛🟡🟡🟡🟡🟡⬛
+ ⬛🟡🟡🟡🟡🟡🟡⬛
+⬛🟡⬛🟡🟡⬛🟡⬛
+⬛🟡🟡🟡🟡🟡🟡⬛
+ ⬛🟡🔴🟡🔴🟡⬛
+  ⬛⬛🟡🟡⬛⬛
+      </pre>
+      <p style="color:#888;font-size:10px;margin-top:8px;">~16x16 sprites</p>
+    </div>
+    <div class="card-body">
+      <h3>A. Game Boy Style</h3>
+      <p>Tiny 16x16 sprites like Gen 1/2 Pokemon. Very retro, fits many characters on screen. Status icons would be small overlays.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="gba" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a2e;padding:24px;text-align:center;">
+      <div style="width:64px;height:64px;margin:0 auto;image-rendering:pixelated;background:#ffcb05;border-radius:8px;position:relative;">
+        <div style="position:absolute;top:12px;left:12px;width:8px;height:8px;background:#333;border-radius:50%;"></div>
+        <div style="position:absolute;top:12px;right:12px;width:8px;height:8px;background:#333;border-radius:50%;"></div>
+        <div style="position:absolute;top:28px;left:50%;transform:translateX(-50%);width:16px;height:4px;background:#333;border-radius:2px;"></div>
+        <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:4px;height:12px;background:#c73030;"></div>
+        <div style="position:absolute;top:4px;left:4px;width:12px;height:8px;background:#333;transform:skewX(-15deg);border-radius:2px;"></div>
+        <div style="position:absolute;top:4px;right:4px;width:12px;height:8px;background:#333;transform:skewX(15deg);border-radius:2px;"></div>
+      </div>
+      <p style="color:#888;font-size:10px;margin-top:8px;">~32-48px sprites</p>
+    </div>
+    <div class="card-body">
+      <h3>B. GBA / Gen 3 Style</h3>
+      <p>Medium 32-48px sprites like Ruby/Sapphire. Good balance of detail and density. Room for expressive status indicators (book, speech bubble, zzz).</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="ds" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a2e;padding:24px;text-align:center;">
+      <div style="width:96px;height:96px;margin:0 auto;background:linear-gradient(135deg,#ffcb05 60%,#e8b804);border-radius:16px;position:relative;box-shadow:0 4px 12px rgba(255,203,5,0.3);">
+        <div style="position:absolute;top:20px;left:20px;width:14px;height:14px;background:#333;border-radius:50%;"></div>
+        <div style="position:absolute;top:20px;right:20px;width:14px;height:14px;background:#333;border-radius:50%;"></div>
+        <div style="position:absolute;top:22px;left:22px;width:4px;height:4px;background:white;border-radius:50%;"></div>
+        <div style="position:absolute;top:22px;right:26px;width:4px;height:4px;background:white;border-radius:50%;"></div>
+        <div style="position:absolute;top:46px;left:50%;transform:translateX(-50%);width:20px;height:6px;background:#333;border-radius:4px;"></div>
+        <div style="position:absolute;top:36px;left:8px;width:16px;height:10px;background:#ff6b6b;border-radius:50%;opacity:0.6;"></div>
+        <div style="position:absolute;top:36px;right:8px;width:16px;height:10px;background:#ff6b6b;border-radius:50%;opacity:0.6;"></div>
+      </div>
+      <p style="color:#888;font-size:10px;margin-top:8px;">~64-96px sprites</p>
+    </div>
+    <div class="card-body">
+      <h3>C. DS / Modern Pixel</h3>
+      <p>Larger 64-96px sprites with more detail. Fewer characters fit on screen but each one is very expressive. Status indicators are full mini-icons.</p>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:16px;">Consider: with many Claude sessions open, smaller sprites scale better. With fewer (2-5), larger sprites look better.</p>

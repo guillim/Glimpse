@@ -1,13 +1,13 @@
 import AppKit
-import SceneKit
 import SpriteKit
 
 /// An NSWindowController that pins a borderless, click-through window
 /// just above the macOS desktop layer (below Finder icons).
 final class DesktopWindowController: NSWindowController {
 
-    private(set) var sceneViewController: SceneViewController?
-    private var skView: SKView?
+    private(set) var skView: SKView?
+    private(set) var agentScene: AgentMonitorScene?
+    private var clickMonitor: Any?
 
     convenience init() {
         let screen = NSScreen.main ?? NSScreen.screens[0]
@@ -21,81 +21,80 @@ final class DesktopWindowController: NSWindowController {
 
         win.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1)
         win.collectionBehavior = [.stationary, .canJoinAllSpaces]
-        win.isOpaque = true
+        win.isOpaque = false
         win.hasShadow = false
-        win.ignoresMouseEvents = true
-        win.backgroundColor = .black
+        win.ignoresMouseEvents = true  // fully click-through, we use global monitor instead
+        win.backgroundColor = .clear
 
         self.init(window: win)
-
-        let vc = SceneViewController()
-
-        // Wire up view-swap closures BEFORE setting contentViewController,
-        // because that triggers viewDidLoad → setupScene → switchToScene.
-        vc.onSwitchToSpriteKit = { [weak self] scene in
-            self?.swapToSpriteKit(scene: scene)
-        }
-        vc.onSwitchToSceneKit = { [weak self] in
-            self?.swapToSceneKit()
-        }
-
-        win.contentViewController = vc
         win.setFrame(screen.frame, display: false)
-        self.sceneViewController = vc
     }
 
     override func showWindow(_ sender: Any?) {
-        window?.orderFrontRegardless()
-        setupOcclusionObserver()
-
-        // If Pokemon theme was selected during init, the swap couldn't run
-        // properly because the view hierarchy wasn't laid out yet.
-        // Re-trigger it now that the window is visible and properly sized.
-        if let svc = sceneViewController, svc.pokemonScene != nil {
-            svc.switchToScene(index: svc.currentSceneIndex)
-        }
-    }
-
-    // MARK: - View Swapping
-
-    private func swapToSpriteKit(scene: SKScene) {
-        guard let window = window else {
-            return
-        }
+        guard let window = window else { return }
+        window.orderFrontRegardless()
 
         let frame = window.frame
+        let sv = SKView(frame: CGRect(origin: .zero, size: frame.size))
+        sv.autoresizingMask = [.width, .height]
+        sv.allowsTransparency = true
+        sv.preferredFramesPerSecond = 30
+        skView = sv
 
-        // Create SKView sized to the WINDOW frame (not contentView which may be zero during init)
-        if skView == nil {
-            let sv = SKView(frame: CGRect(origin: .zero, size: frame.size))
-            sv.autoresizingMask = [.width, .height]
-            sv.allowsTransparency = false
-            sv.preferredFramesPerSecond = 60
-            skView = sv
+        if let contentView = window.contentView {
+            contentView.addSubview(sv)
         }
 
-        guard let sv = skView else { return }
-
-        // Ensure proper frame before presenting scene
-        sv.frame = CGRect(origin: .zero, size: frame.size)
+        let scene = AgentMonitorScene(size: frame.size)
+        scene.scaleMode = .resizeFill
         sv.presentScene(scene)
+        agentScene = scene
 
-        // Hide SCNView, show SKView. Add SKView directly to window's
-        // themeFrame view (not contentView, which IS the SceneViewController's view).
-        sceneViewController?.view.isHidden = true
-        if sv.superview == nil {
-            // Add as sibling of contentView, not child
-            if let contentView = window.contentView {
-                contentView.superview?.addSubview(sv)
-            }
-        }
-        sv.isHidden = false
+        setupOcclusionObserver()
+        setupClickMonitor()
     }
 
-    private func swapToSceneKit() {
-        skView?.presentScene(nil)
-        skView?.isHidden = true
-        sceneViewController?.view.isHidden = false
+    // MARK: - Click Monitor
+
+    /// Global event monitor that detects clicks on character nodes.
+    /// Works regardless of window level — bypasses macOS desktop click handling.
+    private func setupClickMonitor() {
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            self?.handleGlobalClick(event)
+        }
+    }
+
+    private func handleGlobalClick(_ event: NSEvent) {
+        guard let scene = agentScene, let skView = skView else { return }
+
+        // event.locationInWindow is in screen coordinates for global events
+        let screenPoint = event.locationInWindow
+
+        // Convert screen coordinates to SKView local coordinates
+        guard let window = window else { return }
+        let windowPoint = window.convertPoint(fromScreen: screenPoint)
+        let viewPoint = skView.convert(windowPoint, from: nil)
+
+        // Convert view coordinates to scene coordinates
+        let scenePoint = scene.convertPoint(fromView: viewPoint)
+
+        if let node = scene.characterNode(at: scenePoint) {
+            NSLog("[Glimpse] Click on character %@", node.sessionID)
+            scene.activateAppForSession(node.sessionID)
+        }
+    }
+
+    deinit {
+        if let monitor = clickMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
+
+    // MARK: - Power Management
+
+    /// Pause/resume rendering when the window is occluded or the system sleeps.
+    func setPaused(_ paused: Bool) {
+        skView?.isPaused = paused
     }
 
     // MARK: - Occlusion
@@ -108,7 +107,6 @@ final class DesktopWindowController: NSWindowController {
             queue: .main
         ) { [weak self] _ in
             let visible = window.occlusionState.contains(.visible)
-            self?.sceneViewController?.setOccluded(!visible)
             self?.skView?.isPaused = !visible
         }
     }

@@ -2,7 +2,7 @@
 
 ## Overview
 
-A new Glimpse theme that displays procedurally generated Pokemon-styled pixel art characters on a dark background, where each character represents an active Claude Code session on the laptop. Characters update their status every 5 seconds by reading session logs, and respond to head tracking gaze with a hello greeting.
+A new Glimpse theme that displays procedurally generated Pokemon-styled pixel art characters on a dark background, where each character represents an active Claude Code session on the laptop. Characters update their status every 2 seconds by reading session logs.
 
 ## Decisions
 
@@ -11,8 +11,6 @@ A new Glimpse theme that displays procedurally generated Pokemon-styled pixel ar
 | Art style | DS/Modern pixel (64–96px) | Large enough for expressive status indicators |
 | Asset source | Procedurally generated (Core Graphics) | No external assets, infinite unique characters |
 | Grid layout | Adaptive grid | Scales from 1 session (large centered) to 10+ (compact grid) |
-| Hello interaction | Gaze-enter with 300ms dwell | Hover-like, smooth fade in/out, avoids accidental triggers |
-| Hello message | Generic ("Hello!") | Simple, not noisy |
 | Rendering engine | SpriteKit (SKScene) | Lowest RAM for 2D sprites, purpose-built for this use case |
 | Session log source | `~/.claude/` JSONL files | Cursor support deferred (see TODO.md) |
 
@@ -37,28 +35,26 @@ A new Glimpse theme that displays procedurally generated Pokemon-styled pixel ar
 │    ├── Dark background                                   │
 │    ├── CharacterNode[] (adaptive grid)                   │
 │    ├── Empty-state label                                 │
-│    └── update() → gaze hit-testing                       │
+│    └── update loop                                        │
 │              │                                           │
 │  SessionMonitor ──(5s timer)──▶ scan ~/.claude/ JSONL    │
 │              │                                           │
 │  CharacterGenerator: sessionID → CGImage                 │
 │              │                                           │
-│  HeadTracker (existing, zero changes)                    │
 └──────────────────────────────────────────────────────────┘
 ```
 
 ### Components
 
-**PokemonScene.swift** — `SKScene` subclass. Owns the grid layout, character nodes, and empty-state message. In its `update(_:currentTime:)` callback, reads HeadTracker offset, maps to gaze coordinates, and hit-tests characters for the hello interaction.
+**PokemonScene.swift** — `SKScene` subclass. Owns the grid layout, character nodes, and empty-state message.
 
 **SessionMonitor.swift** — Runs a background `Timer` every 5 seconds. Scans `~/.claude/projects/*/` for `.jsonl` session files. For each active session, reads the last ~10 lines to classify activity state. Notifies PokemonScene of session changes (added, removed, state updated) via a delegate or closure.
 
 **CharacterNode.swift** — `SKNode` subclass wrapping:
 - Body sprite (`SKSpriteNode` from procedurally generated `CGImage`)
 - Status icon (top-right: book, speech bubble, question mark, or zzz)
-- Hello bubble (top-center, fades in/out on gaze)
 - Project label (bottom, monospace text)
-- Handles its own animations: status transitions, hello fade, goodbye fadeout
+- Handles its own animations: status transitions, goodbye fadeout
 
 **CharacterGenerator.swift** — Pure function: `sessionID → CGImage`. Hashes the session UUID to seed a deterministic RNG. Draws a unique Pokemon-styled creature using Core Graphics with randomized traits: body shape, color, eye style, ears/horns, tail, mouth, cheek marks.
 
@@ -181,32 +177,6 @@ Grid is centered on screen. Each cell contains: character body + status icon + l
 
 ---
 
-## Gaze Interaction (Hello)
-
-### Head Tracking Integration
-
-HeadTracker requires **zero changes**. Both `SCNSceneRendererDelegate.renderer(_:updateAtTime:)` and `SKScene.update(_:)` run once per frame. PokemonScene reads the same `latestOffset` and `latestVelocity` properties.
-
-### Gaze Mapping
-
-```
-gazeX = screenWidth  * 0.5 + offset.x * screenWidth  * 0.5
-gazeY = screenHeight * 0.5 + offset.y * screenHeight * 0.5
-```
-
-### Hit Testing
-
-Per frame in `SKScene.update(_:)`:
-1. Convert gaze point to scene coordinates
-2. Find nearest CharacterNode within hitbox radius (character size × 1.5)
-3. If character found AND not already focused → start 300ms dwell timer
-4. If same character still focused after 300ms → trigger hello bubble fade-in (0.3s)
-5. If gaze leaves hitbox → cancel dwell timer → fade out hello bubble (0.3s)
-
-Performance: O(n) distance check where n = session count. Trivial for <20 sessions.
-
----
-
 ## View Swapping
 
 ### Switch to Pokemon Theme
@@ -227,7 +197,7 @@ Performance: O(n) distance check where n = session count. Trivial for <20 sessio
 3. Load new 3D scene as usual
 4. Release SKScene + SKView
 
-Both views share the same HeadTracker instance. Window properties (level, click-through, borderless) are unchanged.
+Window properties (level, click-through, borderless) are unchanged.
 
 ---
 
@@ -235,7 +205,7 @@ Both views share the same HeadTracker instance. Window properties (level, click-
 
 | File | Purpose |
 |------|---------|
-| `Glimpse/PokemonScene.swift` | SKScene — grid layout, update loop, empty state, gaze hit-testing |
+| `Glimpse/PokemonScene.swift` | SKScene — grid layout, empty state, session lifecycle |
 | `Glimpse/SessionMonitor.swift` | Timer-based JSONL scanner, activity classification, session lifecycle |
 | `Glimpse/CharacterNode.swift` | SKNode — body sprite, status icon, label, hello bubble, animations |
 | `Glimpse/CharacterGenerator.swift` | Pure function: sessionID → CGImage via Core Graphics |

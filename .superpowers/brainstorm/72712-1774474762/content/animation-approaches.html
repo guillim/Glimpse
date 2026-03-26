@@ -1,0 +1,184 @@
+<h2>State-Specific Animations — Approaches</h2>
+<p class="subtitle">Each replaces the default breathing. Subtle, ambient feel.</p>
+
+<style>
+  .demo-row {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 16px 0;
+    background: #1a1a2e;
+    border-radius: 12px;
+    padding: 24px 16px;
+  }
+  .demo-char {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 80px;
+  }
+  .sprite {
+    width: 48px;
+    height: 48px;
+    border-radius: 6px;
+    image-rendering: pixelated;
+  }
+  .state-label {
+    font-size: 10px;
+    color: #8a8a9a;
+    font-family: monospace;
+    text-align: center;
+  }
+  .state-emoji {
+    font-size: 16px;
+  }
+
+  /* === APPROACH A: Body motion only === */
+  .a-thinking { background: #5a8a6a; animation: a-sway 2.4s ease-in-out infinite; }
+  .a-running  { background: #5a8a6a; animation: a-bounce 0.5s ease-in-out infinite; }
+  .a-writing  { background: #5a8a6a; animation: a-jitter 0.12s linear infinite; }
+  .a-reading  { background: #5a8a6a; animation: a-breathe 2.0s ease-in-out infinite; }
+  .a-spawning { background: #5a8a6a; animation: a-pulse-scale 1.2s ease-in-out infinite; }
+  .a-searching{ background: #5a8a6a; animation: a-scan 1.6s ease-in-out infinite; }
+  .a-sleeping { background: #5a8a6a; animation: a-slow-breathe 3.6s ease-in-out infinite; }
+  .a-done     { background: #5a8a6a; animation: a-slow-breathe 3.6s ease-in-out infinite; opacity: 0.7; }
+  .a-asking   { background: #5a8a6a; animation: a-wiggle 1.0s ease-in-out infinite; }
+
+  @keyframes a-sway {
+    0%, 100% { transform: rotate(-2deg); }
+    50% { transform: rotate(2deg); }
+  }
+  @keyframes a-bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  @keyframes a-jitter {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-1px); }
+    75% { transform: translateX(1px); }
+  }
+  @keyframes a-breathe {
+    0%, 100% { transform: scaleY(1.0); }
+    50% { transform: scaleY(1.03); }
+  }
+  @keyframes a-pulse-scale {
+    0%, 100% { transform: scale(1.0); }
+    50% { transform: scale(1.06); }
+  }
+  @keyframes a-scan {
+    0%, 100% { transform: translateX(-3px); }
+    50% { transform: translateX(3px); }
+  }
+  @keyframes a-slow-breathe {
+    0%, 100% { transform: scaleY(1.0) translateY(0); }
+    50% { transform: scaleY(1.02) translateY(1px); }
+  }
+  @keyframes a-wiggle {
+    0%, 100% { transform: rotate(0deg); }
+    20% { transform: rotate(-3deg); }
+    40% { transform: rotate(3deg); }
+    60% { transform: rotate(-2deg); }
+    80% { transform: rotate(2deg); }
+  }
+
+  /* === APPROACH B: Body motion + speed variation === */
+  .b-thinking { background: #5a8a6a; animation: b-think 3.0s ease-in-out infinite; }
+  .b-running  { background: #5a8a6a; animation: b-run 0.35s ease-in-out infinite; }
+  .b-writing  { background: #5a8a6a; animation: b-write 0.8s steps(4) infinite; }
+  .b-reading  { background: #5a8a6a; animation: b-read 2.5s ease-in-out infinite; }
+  .b-spawning { background: #5a8a6a; animation: b-spawn 1.5s ease-in-out infinite; }
+  .b-searching{ background: #5a8a6a; animation: b-search 2.0s ease-in-out infinite; }
+  .b-sleeping { background: #5a8a6a; animation: b-sleep 4.0s ease-in-out infinite; }
+  .b-done     { background: #5a8a6a; animation: b-sleep 4.0s ease-in-out infinite; opacity: 0.7; }
+  .b-asking   { background: #5a8a6a; animation: b-ask 0.8s ease-in-out infinite; }
+
+  @keyframes b-think {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    25% { transform: translateY(-1px) rotate(-1.5deg); }
+    75% { transform: translateY(-1px) rotate(1.5deg); }
+  }
+  @keyframes b-run {
+    0%, 100% { transform: translateY(0) scaleY(1.0); }
+    50% { transform: translateY(-4px) scaleY(0.95); }
+  }
+  @keyframes b-write {
+    0%  { transform: translateY(0); }
+    25% { transform: translateY(-1px); }
+    50% { transform: translateY(0); }
+    75% { transform: translateY(-1px); }
+  }
+  @keyframes b-read {
+    0%, 100% { transform: scaleY(1.0) rotate(0deg); }
+    50% { transform: scaleY(1.02) rotate(-1deg); }
+  }
+  @keyframes b-spawn {
+    0%, 100% { transform: scale(1.0); }
+    30% { transform: scale(1.08); }
+    60% { transform: scale(0.97); }
+  }
+  @keyframes b-search {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    25% { transform: translateX(-2px) rotate(-1deg); }
+    75% { transform: translateX(2px) rotate(1deg); }
+  }
+  @keyframes b-sleep {
+    0%, 100% { transform: scaleY(1.0) translateY(0); }
+    50% { transform: scaleY(1.015) translateY(1px); }
+  }
+  @keyframes b-ask {
+    0%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-3px); }
+    50% { transform: translateY(0); }
+    70% { transform: translateY(-2px); }
+  }
+</style>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Distinct Motion Per State</h3>
+      <p>Each state gets a unique motion type: sway for thinking, bounce for running, jitter for writing, etc. Easy to tell apart even in peripheral vision because the <em>kind</em> of movement differs.</p>
+      <div class="demo-row">
+        <div class="demo-char"><div class="sprite a-thinking"></div><span class="state-emoji">🧠</span><span class="state-label">think</span></div>
+        <div class="demo-char"><div class="sprite a-running"></div><span class="state-emoji">⚡</span><span class="state-label">run</span></div>
+        <div class="demo-char"><div class="sprite a-writing"></div><span class="state-emoji">✏️</span><span class="state-label">write</span></div>
+        <div class="demo-char"><div class="sprite a-reading"></div><span class="state-emoji">📖</span><span class="state-label">read</span></div>
+        <div class="demo-char"><div class="sprite a-spawning"></div><span class="state-emoji">🐣</span><span class="state-label">spawn</span></div>
+        <div class="demo-char"><div class="sprite a-searching"></div><span class="state-emoji">🔍</span><span class="state-label">search</span></div>
+        <div class="demo-char"><div class="sprite a-sleeping"></div><span class="state-emoji">💤</span><span class="state-label">sleep</span></div>
+        <div class="demo-char"><div class="sprite a-done"></div><span class="state-emoji">✅</span><span class="state-label">done</span></div>
+        <div class="demo-char"><div class="sprite a-asking"></div><span class="state-emoji">❓</span><span class="state-label">ask</span></div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Maximum differentiation — each state is visually unique</li><li>9 animations but all are simple SKAction sequences</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>More animation code to maintain</li><li>Some motions (jitter for writing) might feel noisy with many agents</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Speed + Rhythm Variation</h3>
+      <p>All states use similar bob/breathe motions but with different <em>speeds</em> and <em>rhythms</em>. Running is fast and sharp, thinking is slow and floaty, sleeping is barely moving. Calmer overall but relies more on tempo than motion type.</p>
+      <div class="demo-row">
+        <div class="demo-char"><div class="sprite b-thinking"></div><span class="state-emoji">🧠</span><span class="state-label">think</span></div>
+        <div class="demo-char"><div class="sprite b-running"></div><span class="state-emoji">⚡</span><span class="state-label">run</span></div>
+        <div class="demo-char"><div class="sprite b-writing"></div><span class="state-emoji">✏️</span><span class="state-label">write</span></div>
+        <div class="demo-char"><div class="sprite b-reading"></div><span class="state-emoji">📖</span><span class="state-label">read</span></div>
+        <div class="demo-char"><div class="sprite b-spawning"></div><span class="state-emoji">🐣</span><span class="state-label">spawn</span></div>
+        <div class="demo-char"><div class="sprite b-searching"></div><span class="state-emoji">🔍</span><span class="state-label">search</span></div>
+        <div class="demo-char"><div class="sprite b-sleeping"></div><span class="state-emoji">💤</span><span class="state-label">sleep</span></div>
+        <div class="demo-char"><div class="sprite b-done"></div><span class="state-emoji">✅</span><span class="state-label">done</span></div>
+        <div class="demo-char"><div class="sprite b-asking"></div><span class="state-emoji">❓</span><span class="state-label">ask</span></div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Calmer scene — motions harmonize rather than compete</li><li>Easier to tune (just adjust timing parameters)</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Harder to distinguish states at a glance — speed is subtler than motion type</li><li>May lose differentiation with many agents on screen</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
