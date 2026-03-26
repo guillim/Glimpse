@@ -2,300 +2,199 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Asking Glow Design Options</title>
+<title>All 13 Activity States</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #0a0a0f; color: #ccc; font-family: 'SF Mono', 'Menlo', monospace; padding: 30px; }
-  h1 { text-align: center; color: #8888aa; margin-bottom: 8px; font-size: 22px; }
-  .subtitle { text-align: center; color: #555; margin-bottom: 30px; font-size: 13px; }
-  .options { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; }
-  .option {
-    background: #08080c;
-    border: 1px solid #2a2a3a;
-    border-radius: 12px;
-    padding: 20px;
-    width: 280px;
-    text-align: center;
+  body {
+    background: #1a1a2e;
+    color: #ccc;
+    font-family: 'Menlo', 'Monaco', monospace;
+    padding: 30px;
   }
-  .option h2 { color: #aab; font-size: 14px; margin-bottom: 4px; }
-  .option .tag { font-size: 11px; color: #666; margin-bottom: 12px; display: block; }
-  .option .desc { font-size: 11px; color: #777; margin-top: 10px; line-height: 1.5; text-align: left; }
-  canvas { border-radius: 4px; }
-  .recommended { border-color: #4a6; }
-  .recommended .tag { color: #4a6; }
+  h1 { text-align: center; margin-bottom: 8px; font-size: 22px; color: #aab; }
+  .subtitle { text-align: center; color: #667; font-size: 13px; margin-bottom: 35px; }
+
+  .states-grid {
+    display: flex; flex-wrap: wrap; gap: 14px; justify-content: center;
+    max-width: 900px; margin: 0 auto;
+  }
+
+  .state-card {
+    width: 130px; padding: 12px 8px; border-radius: 8px;
+    background: rgba(26, 26, 38, 0.85);
+    border: 1px solid rgba(77, 77, 102, 0.3);
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+  }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px 3px 7px;
+    border-radius: 14px;
+  }
+  .pill .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .pill .txt {
+    font-size: 9px; font-weight: bold;
+    text-transform: uppercase; letter-spacing: 0.4px;
+    white-space: nowrap;
+  }
+
+  .state-label { font-size: 9px; color: #556; text-align: center; line-height: 1.4; }
+  .state-category { font-size: 7px; color: #444; text-transform: uppercase; letter-spacing: 1px; margin-top: -2px; }
+
+  /* NEW badge */
+  .new-badge {
+    font-size: 7px; font-weight: bold; color: #4a6;
+    background: rgba(68, 170, 102, 0.15);
+    border: 1px solid rgba(68, 170, 102, 0.3);
+    padding: 1px 5px; border-radius: 4px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.7); }
+  }
+
+  /* Color definitions for each state */
+  .pill.read { background: rgba(90,160,255,0.15); border: 1px solid rgba(90,160,255,0.3); }
+  .pill.read .dot { background: #5aa0ff; box-shadow: 0 0 5px rgba(90,160,255,0.6); }
+  .pill.read .txt { color: #8ac4ff; }
+
+  .pill.write { background: rgba(80,200,120,0.15); border: 1px solid rgba(80,200,120,0.3); }
+  .pill.write .dot { background: #50c878; box-shadow: 0 0 5px rgba(80,200,120,0.6); }
+  .pill.write .txt { color: #78e8a0; }
+
+  .pill.run { background: rgba(255,200,60,0.15); border: 1px solid rgba(255,200,60,0.3); }
+  .pill.run .dot { background: #ffc83c; box-shadow: 0 0 5px rgba(255,200,60,0.6); }
+  .pill.run .txt { color: #ffe080; }
+
+  .pill.test { background: rgba(64,204,192,0.15); border: 1px solid rgba(64,204,192,0.3); }
+  .pill.test .dot { background: #40ccbf; box-shadow: 0 0 5px rgba(64,204,192,0.6); }
+  .pill.test .txt { color: #73ebe0; }
+
+  .pill.build { background: rgba(235,166,51,0.15); border: 1px solid rgba(235,166,51,0.3); }
+  .pill.build .dot { background: #eba633; box-shadow: 0 0 5px rgba(235,166,51,0.6); }
+  .pill.build .txt { color: #ffcc73; }
+
+  .pill.commit { background: rgba(217,102,191,0.15); border: 1px solid rgba(217,102,191,0.3); }
+  .pill.commit .dot { background: #d966bf; box-shadow: 0 0 5px rgba(217,102,191,0.6); }
+  .pill.commit .txt { color: #f094e0; }
+
+  .pill.think { background: rgba(168,130,255,0.15); border: 1px solid rgba(168,130,255,0.3); }
+  .pill.think .dot { background: #a882ff; box-shadow: 0 0 5px rgba(168,130,255,0.6); }
+  .pill.think .txt { color: #c4a8ff; }
+
+  .pill.process { background: rgba(140,115,209,0.12); border: 1px solid rgba(140,115,209,0.25); }
+  .pill.process .dot { background: #8c73d1; box-shadow: 0 0 5px rgba(140,115,209,0.5); }
+  .pill.process .txt { color: #b399eb; }
+
+  .pill.spawn { background: rgba(255,180,100,0.15); border: 1px solid rgba(255,180,100,0.3); }
+  .pill.spawn .dot { background: #ffb464; box-shadow: 0 0 5px rgba(255,180,100,0.6); }
+  .pill.spawn .txt { color: #ffd0a0; }
+
+  .pill.search { background: rgba(100,210,220,0.15); border: 1px solid rgba(100,210,220,0.3); }
+  .pill.search .dot { background: #64d2dc; box-shadow: 0 0 5px rgba(100,210,220,0.6); }
+  .pill.search .txt { color: #90e8f0; }
+
+  .pill.ask { background: rgba(255,140,0,0.15); border: 1px solid rgba(255,140,0,0.3); }
+  .pill.ask .dot { background: #ff8c00; box-shadow: 0 0 5px rgba(255,140,0,0.6); animation: pulse-dot 1.2s ease-in-out infinite; }
+  .pill.ask .txt { color: #ffb060; }
+
+  .pill.done { background: rgba(100,200,100,0.15); border: 1px solid rgba(100,200,100,0.3); }
+  .pill.done .dot { background: #64c864; box-shadow: 0 0 5px rgba(100,200,100,0.5); }
+  .pill.done .txt { color: #90e890; }
+
+  .pill.idle { background: rgba(100,100,120,0.12); border: 1px solid rgba(100,100,120,0.2); }
+  .pill.idle .dot { background: #666; box-shadow: 0 0 4px rgba(100,100,120,0.3); }
+  .pill.idle .txt { color: #888; }
+
+  .section-sep {
+    width: 100%; text-align: center; color: #445; font-size: 10px;
+    margin: 15px 0 5px; text-transform: uppercase; letter-spacing: 2px;
+  }
 </style>
 </head>
 <body>
+  <h1>13 Activity States &mdash; Colored Pill</h1>
+  <p class="subtitle">4 new states split from "think" and "run" for granular visibility</p>
 
-<h1>Asking Glow Options</h1>
-<p class="subtitle">Orange glow when agent is waiting for user input — card-shaped instead of circular. Each shows pulse min and max states.</p>
+  <div class="states-grid">
 
-<div class="options" id="options"></div>
+    <div style="width:100%"><div class="section-sep">File Operations</div></div>
 
-<script>
-const CARD_W = 140;
-const CARD_H = 182;
-const CORNER_R = 8;
-const CW = 240, CH = 260;
+    <div class="state-card">
+      <div class="pill read"><div class="dot"></div><span class="txt">read</span></div>
+      <div class="state-label">Reading files<br>Glob, Grep</div>
+    </div>
+    <div class="state-card">
+      <div class="pill write"><div class="dot"></div><span class="txt">write</span></div>
+      <div class="state-label">Editing code<br>Edit, Write</div>
+    </div>
 
-// Rounded rect path helper
-function roundedRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
+    <div style="width:100%"><div class="section-sep">Shell Commands (split from "run")</div></div>
 
-function drawCard(ctx, cx, cy) {
-  const x = cx - CARD_W/2, y = cy - CARD_H/2;
-  roundedRect(ctx, x, y, CARD_W, CARD_H, CORNER_R);
-  ctx.fillStyle = 'rgba(26,26,38,0.7)';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(77,77,102,0.4)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
+    <div class="state-card">
+      <div class="pill run"><div class="dot"></div><span class="txt">run</span></div>
+      <div class="state-label">Generic shell<br>command</div>
+    </div>
+    <div class="state-card">
+      <div class="new-badge">new</div>
+      <div class="pill test"><div class="dot"></div><span class="txt">test</span></div>
+      <div class="state-label">Running tests<br>jest, pytest, etc.</div>
+    </div>
+    <div class="state-card">
+      <div class="new-badge">new</div>
+      <div class="pill build"><div class="dot"></div><span class="txt">build</span></div>
+      <div class="state-label">Compiling<br>make, tsc, cargo</div>
+    </div>
+    <div class="state-card">
+      <div class="new-badge">new</div>
+      <div class="pill commit"><div class="dot"></div><span class="txt">commit</span></div>
+      <div class="state-label">Git operations<br>commit, push, etc.</div>
+    </div>
 
-  // Fake character placeholder
-  ctx.fillStyle = 'rgba(255,204,5,0.8)';
-  ctx.beginPath(); ctx.arc(cx, cy - 20, 26, 0, Math.PI*2); ctx.fill();
-  // Body
-  ctx.beginPath(); ctx.ellipse(cx, cy + 16, 14, 11, 0, 0, Math.PI*2); ctx.fill();
-  // Eyes
-  ctx.fillStyle = '#1a1a1a';
-  ctx.beginPath(); ctx.arc(cx-8, cy-22, 4, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(cx+8, cy-22, 4, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.beginPath(); ctx.arc(cx-7, cy-23, 1.5, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(cx+9, cy-23, 1.5, 0, Math.PI*2); ctx.fill();
-  // Status label
-  ctx.fillStyle = 'rgb(255,140,0)';
-  ctx.font = '10px Menlo'; ctx.textAlign = 'center';
-  ctx.fillText('ask 2min', cx, cy + 45);
-  // Project
-  ctx.fillStyle = '#555';
-  ctx.font = '8px Menlo';
-  ctx.fillText('folder: background', cx, cy + 62);
-}
+    <div style="width:100%"><div class="section-sep">Reasoning (split from "think")</div></div>
 
-// Option A: Single outline glow (strokeColor + glowWidth on card-shaped rect)
-function drawOptionA(canvas, phase) {
-  const ctx = canvas.getContext('2d');
-  canvas.width = CW * 2; canvas.height = CH * 2;
-  canvas.style.width = CW + 'px'; canvas.style.height = CH + 'px';
-  ctx.scale(2, 2);
+    <div class="state-card">
+      <div class="pill think"><div class="dot"></div><span class="txt">think</span></div>
+      <div class="state-label">Reasoning<br>text output</div>
+    </div>
+    <div class="state-card">
+      <div class="new-badge">new</div>
+      <div class="pill process"><div class="dot"></div><span class="txt">process</span></div>
+      <div class="state-label">Loading...<br>user just sent msg</div>
+    </div>
 
-  const cx = CW/2, cy = CH/2;
-  const alpha = phase === 'max' ? 0.9 : 0.5;
-  const glow = phase === 'max' ? 12 : 6;
+    <div style="width:100%"><div class="section-sep">Network &amp; Agents</div></div>
 
-  // Glow layers (simulated glowWidth with multiple strokes)
-  const x = cx - CARD_W/2, y = cy - CARD_H/2;
-  for (let i = glow; i > 0; i -= 2) {
-    roundedRect(ctx, x - i, y - i, CARD_W + i*2, CARD_H + i*2, CORNER_R + i);
-    ctx.strokeStyle = `rgba(255,140,0,${alpha * (1 - i/glow) * 0.4})`;
-    ctx.lineWidth = 3;
-    ctx.stroke();
-  }
+    <div class="state-card">
+      <div class="pill spawn"><div class="dot"></div><span class="txt">spawn</span></div>
+      <div class="state-label">Launching<br>subagent</div>
+    </div>
+    <div class="state-card">
+      <div class="pill search"><div class="dot"></div><span class="txt">search</span></div>
+      <div class="state-label">Web search<br>or fetch</div>
+    </div>
 
-  // Card border in orange
-  roundedRect(ctx, x, y, CARD_W, CARD_H, CORNER_R);
-  ctx.strokeStyle = `rgba(255,140,0,${alpha * 0.7})`;
-  ctx.lineWidth = 2;
-  ctx.stroke();
+    <div style="width:100%"><div class="section-sep">Terminal States</div></div>
 
-  drawCard(ctx, cx, cy);
-}
+    <div class="state-card">
+      <div class="pill ask"><div class="dot"></div><span class="txt">ask</span></div>
+      <div class="state-label">Waiting for<br>user input</div>
+    </div>
+    <div class="state-card">
+      <div class="pill done"><div class="dot"></div><span class="txt">done</span></div>
+      <div class="state-label">Task finished<br>end_turn</div>
+    </div>
+    <div class="state-card">
+      <div class="pill idle"><div class="dot"></div><span class="txt">idle</span></div>
+      <div class="state-label">Active but<br>sleeping</div>
+    </div>
 
-// Option B: Soft outer shadow (box-shadow equivalent)
-function drawOptionB(canvas, phase) {
-  const ctx = canvas.getContext('2d');
-  canvas.width = CW * 2; canvas.height = CH * 2;
-  canvas.style.width = CW + 'px'; canvas.style.height = CH + 'px';
-  ctx.scale(2, 2);
+  </div>
 
-  const cx = CW/2, cy = CH/2;
-  const spread = phase === 'max' ? 18 : 10;
-  const alpha = phase === 'max' ? 0.6 : 0.3;
-
-  // Soft glow: many concentric rounded rects with decreasing opacity
-  const x = cx - CARD_W/2, y = cy - CARD_H/2;
-  for (let i = spread; i > 0; i -= 1) {
-    roundedRect(ctx, x - i, y - i, CARD_W + i*2, CARD_H + i*2, CORNER_R + i*0.5);
-    ctx.strokeStyle = `rgba(255,140,0,${alpha * Math.pow(1 - i/spread, 2)})`;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
-
-  // Orange card border
-  roundedRect(ctx, x, y, CARD_W, CARD_H, CORNER_R);
-  ctx.strokeStyle = `rgba(255,140,0,0.5)`;
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  drawCard(ctx, cx, cy);
-}
-
-// Option C: Neon border + bloom
-function drawOptionC(canvas, phase) {
-  const ctx = canvas.getContext('2d');
-  canvas.width = CW * 2; canvas.height = CH * 2;
-  canvas.style.width = CW + 'px'; canvas.style.height = CH + 'px';
-  ctx.scale(2, 2);
-
-  const cx = CW/2, cy = CH/2;
-  const x = cx - CARD_W/2, y = cy - CARD_H/2;
-  const intensity = phase === 'max' ? 1.0 : 0.6;
-
-  // Bloom layers (wide, soft)
-  for (let i = 20; i > 0; i -= 1.5) {
-    roundedRect(ctx, x - i, y - i, CARD_W + i*2, CARD_H + i*2, CORNER_R + i*0.4);
-    ctx.strokeStyle = `rgba(255,140,0,${intensity * 0.03})`;
-    ctx.lineWidth = 3;
-    ctx.stroke();
-  }
-
-  // Bright inner border (neon effect)
-  roundedRect(ctx, x, y, CARD_W, CARD_H, CORNER_R);
-  ctx.strokeStyle = `rgba(255,180,50,${intensity * 0.9})`;
-  ctx.lineWidth = 2.5;
-  ctx.stroke();
-
-  // Even brighter inner edge
-  roundedRect(ctx, x + 1, y + 1, CARD_W - 2, CARD_H - 2, CORNER_R - 1);
-  ctx.strokeStyle = `rgba(255,220,130,${intensity * 0.4})`;
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  drawCard(ctx, cx, cy);
-}
-
-// Option D: Breathing border thickness
-function drawOptionD(canvas, phase) {
-  const ctx = canvas.getContext('2d');
-  canvas.width = CW * 2; canvas.height = CH * 2;
-  canvas.style.width = CW + 'px'; canvas.style.height = CH + 'px';
-  ctx.scale(2, 2);
-
-  const cx = CW/2, cy = CH/2;
-  const x = cx - CARD_W/2, y = cy - CARD_H/2;
-  const thickness = phase === 'max' ? 4 : 2;
-  const glowSpread = phase === 'max' ? 10 : 4;
-
-  // Subtle outer glow
-  for (let i = glowSpread; i > 0; i -= 1) {
-    roundedRect(ctx, x - i, y - i, CARD_W + i*2, CARD_H + i*2, CORNER_R + i*0.5);
-    ctx.strokeStyle = `rgba(255,140,0,${0.08 * (1 - i/glowSpread)})`;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
-
-  // Pulsing border
-  roundedRect(ctx, x, y, CARD_W, CARD_H, CORNER_R);
-  ctx.strokeStyle = `rgba(255,140,0,0.7)`;
-  ctx.lineWidth = thickness;
-  ctx.stroke();
-
-  drawCard(ctx, cx, cy);
-}
-
-// Option E: Corner accents with glow
-function drawOptionE(canvas, phase) {
-  const ctx = canvas.getContext('2d');
-  canvas.width = CW * 2; canvas.height = CH * 2;
-  canvas.style.width = CW + 'px'; canvas.style.height = CH + 'px';
-  ctx.scale(2, 2);
-
-  const cx = CW/2, cy = CH/2;
-  const x = cx - CARD_W/2, y = cy - CARD_H/2;
-  const alpha = phase === 'max' ? 0.8 : 0.4;
-
-  // Full soft glow behind
-  for (let i = 14; i > 0; i -= 1) {
-    roundedRect(ctx, x - i, y - i, CARD_W + i*2, CARD_H + i*2, CORNER_R + i*0.5);
-    ctx.strokeStyle = `rgba(255,140,0,${alpha * 0.025})`;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
-
-  // Orange border, slightly dim
-  roundedRect(ctx, x, y, CARD_W, CARD_H, CORNER_R);
-  ctx.strokeStyle = `rgba(255,140,0,${alpha * 0.5})`;
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // Bright corner brackets
-  const len = 18;
-  ctx.strokeStyle = `rgba(255,160,30,${alpha})`;
-  ctx.lineWidth = 2.5;
-  ctx.lineCap = 'round';
-  // Top-left
-  ctx.beginPath(); ctx.moveTo(x, y+len); ctx.lineTo(x, y+CORNER_R); ctx.quadraticCurveTo(x, y, x+CORNER_R, y); ctx.lineTo(x+len, y); ctx.stroke();
-  // Top-right
-  ctx.beginPath(); ctx.moveTo(x+CARD_W-len, y); ctx.lineTo(x+CARD_W-CORNER_R, y); ctx.quadraticCurveTo(x+CARD_W, y, x+CARD_W, y+CORNER_R); ctx.lineTo(x+CARD_W, y+len); ctx.stroke();
-  // Bottom-left
-  ctx.beginPath(); ctx.moveTo(x, y+CARD_H-len); ctx.lineTo(x, y+CARD_H-CORNER_R); ctx.quadraticCurveTo(x, y+CARD_H, x+CORNER_R, y+CARD_H); ctx.lineTo(x+len, y+CARD_H); ctx.stroke();
-  // Bottom-right
-  ctx.beginPath(); ctx.moveTo(x+CARD_W-len, y+CARD_H); ctx.lineTo(x+CARD_W-CORNER_R, y+CARD_H); ctx.quadraticCurveTo(x+CARD_W, y+CARD_H, x+CARD_W, y+CARD_H-CORNER_R); ctx.lineTo(x+CARD_W, y+CARD_H-len); ctx.stroke();
-  ctx.lineCap = 'butt';
-
-  drawCard(ctx, cx, cy);
-}
-
-const options = [
-  {
-    id: 'a', name: 'A. Card Outline Glow', tag: 'SIMPLE',
-    desc: 'Rounded-rect glow that matches the card shape exactly. Orange stroke + simulated glowWidth. Direct port of current circle glow but card-shaped.',
-    draw: drawOptionA,
-  },
-  {
-    id: 'b', name: 'B. Soft Outer Aura', tag: 'RECOMMENDED',
-    desc: 'Many concentric rounded rects with decreasing opacity — creates a soft, diffused aura around the card. Feels warm and urgent without being harsh.',
-    draw: drawOptionB,
-    recommended: true,
-  },
-  {
-    id: 'c', name: 'C. Neon Border + Bloom', tag: 'BOLD',
-    desc: 'Bright inner border (almost white-orange) with wide soft bloom behind it. High contrast, very visible. Reads as "alert" from a distance.',
-    draw: drawOptionC,
-  },
-  {
-    id: 'd', name: 'D. Breathing Thickness', tag: 'MINIMAL',
-    desc: 'Orange border that pulses between thin (2px) and thick (4px) with subtle outer glow. Most restrained option — noticeable but not distracting.',
-    draw: drawOptionD,
-  },
-  {
-    id: 'e', name: 'E. Corner Brackets', tag: 'DISTINCTIVE',
-    desc: 'Bright orange corner brackets over a dim full border. Unique look — suggests a "selection" or "focus" state. Brackets pulse in opacity.',
-    draw: drawOptionE,
-  },
-];
-
-const container = document.getElementById('options');
-options.forEach(opt => {
-  const div = document.createElement('div');
-  div.className = 'option' + (opt.recommended ? ' recommended' : '');
-
-  let html = `<h2>${opt.name}</h2><span class="tag">${opt.tag}</span>`;
-  html += '<div style="display:flex;gap:8px;justify-content:center;align-items:center;">';
-  html += `<div style="text-align:center"><canvas id="${opt.id}-min"></canvas><div style="font-size:9px;color:#555;margin-top:4px">pulse min</div></div>`;
-  html += `<div style="text-align:center"><canvas id="${opt.id}-max"></canvas><div style="font-size:9px;color:#555;margin-top:4px">pulse max</div></div>`;
-  html += '</div>';
-  html += `<p class="desc">${opt.desc}</p>`;
-  div.innerHTML = html;
-  container.appendChild(div);
-});
-
-options.forEach(opt => {
-  opt.draw(document.getElementById(`${opt.id}-min`), 'min');
-  opt.draw(document.getElementById(`${opt.id}-max`), 'max');
-});
-</script>
 </body>
 </html>

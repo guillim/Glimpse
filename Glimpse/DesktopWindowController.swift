@@ -65,20 +65,19 @@ final class DesktopWindowController: NSWindowController {
     }
 
     private func handleGlobalClick(_ event: NSEvent) {
-        guard let scene = agentScene, let skView = skView else { return }
+        guard let scene = agentScene, let skView = skView else {
+            NSLog("[Glimpse] handleGlobalClick: no scene or skView")
+            return
+        }
 
-        // event.locationInWindow is in screen coordinates for global events
         let screenPoint = event.locationInWindow
-
-        // Convert screen coordinates to SKView local coordinates
         guard let window = window else { return }
         let windowPoint = window.convertPoint(fromScreen: screenPoint)
         let viewPoint = skView.convert(windowPoint, from: nil)
-
-        // Convert view coordinates to scene coordinates
         let scenePoint = scene.convertPoint(fromView: viewPoint)
 
         if let node = scene.characterNode(at: scenePoint) {
+            NSLog("[Glimpse] HIT character %@", node.sessionID)
             scene.activateAppForSession(node.sessionID)
         }
     }

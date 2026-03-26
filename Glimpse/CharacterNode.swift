@@ -11,8 +11,10 @@ final class CharacterNode: SKNode {
     private let bodySprite: SKSpriteNode
     private let cardBG: SKShapeNode
     private var glowNode: SKNode?
-    private let statusLabel: SKLabelNode
+    private let pillBG: SKShapeNode
+    private let statusDot: SKShapeNode
     private let activityWordLabel: SKLabelNode
+    private let durationLabel: SKLabelNode
     private let dividerNode: SKShapeNode
     private let folderPrefixLabel: SKLabelNode
     private let projectLabel: SKLabelNode
@@ -57,21 +59,41 @@ final class CharacterNode: SKNode {
         let spriteY = cardH * 0.15
         bodySprite.position = CGPoint(x: 0, y: spriteY)
 
-        // Status row: emoji + activity word centered below sprite
+        // Status row: colored pill with glowing dot + uppercase text
         let statusY = spriteY - size * 0.5 - size * 0.15
-        statusLabel = SKLabelNode(text: "💤")
-        statusLabel.fontSize = size * 0.25
-        statusLabel.position = CGPoint(x: -size * 0.15, y: statusY)
-        statusLabel.verticalAlignmentMode = .center
-        statusLabel.horizontalAlignmentMode = .center
+        let pillW = size * 0.85
+        let pillH = size * 0.22
+        let pillR = pillH / 2
+
+        pillBG = SKShapeNode(rectOf: CGSize(width: pillW, height: pillH), cornerRadius: pillR)
+        pillBG.fillColor = .init(red: 0.39, green: 0.39, blue: 0.47, alpha: 0.12)
+        pillBG.strokeColor = .init(red: 0.39, green: 0.39, blue: 0.47, alpha: 0.2)
+        pillBG.lineWidth = 1
+        pillBG.position = CGPoint(x: 0, y: statusY)
+
+        let dotR = max(size * 0.04, 3)
+        statusDot = SKShapeNode(circleOfRadius: dotR)
+        statusDot.fillColor = .init(red: 0.4, green: 0.4, blue: 0.47, alpha: 1)
+        statusDot.strokeColor = .clear
+        statusDot.glowWidth = max(size * 0.03, 2)
+        statusDot.position = CGPoint(x: -pillW * 0.32, y: statusY)
 
         activityWordLabel = SKLabelNode(fontNamed: "Menlo-Bold")
-        activityWordLabel.text = "idle"
-        activityWordLabel.fontSize = max(size * 0.13, 9)
-        activityWordLabel.fontColor = .init(red: 0.63, green: 0.63, blue: 0.69, alpha: 1)
-        activityWordLabel.position = CGPoint(x: size * 0.15, y: statusY)
+        activityWordLabel.text = "IDLE"
+        activityWordLabel.fontSize = max(size * 0.11, 8)
+        activityWordLabel.fontColor = .init(red: 0.53, green: 0.53, blue: 0.58, alpha: 1)
+        activityWordLabel.position = CGPoint(x: size * 0.03, y: statusY)
         activityWordLabel.verticalAlignmentMode = .center
-        activityWordLabel.horizontalAlignmentMode = .left
+        activityWordLabel.horizontalAlignmentMode = .center
+
+        // Duration label (outside pill, to the right)
+        durationLabel = SKLabelNode(fontNamed: "Menlo")
+        durationLabel.text = ""
+        durationLabel.fontSize = max(size * 0.09, 7)
+        durationLabel.fontColor = .init(red: 0.45, green: 0.45, blue: 0.52, alpha: 1)
+        durationLabel.position = CGPoint(x: pillW * 0.55 + 4, y: statusY)
+        durationLabel.verticalAlignmentMode = .center
+        durationLabel.horizontalAlignmentMode = .left
 
         // Divider line between status row and project info
         let dividerY = statusY - size * 0.18
@@ -137,8 +159,10 @@ final class CharacterNode: SKNode {
 
         addChild(cardBG)
         addChild(bodySprite)
-        addChild(statusLabel)
+        addChild(pillBG)
+        addChild(statusDot)
         addChild(activityWordLabel)
+        addChild(durationLabel)
         addChild(dividerNode)
         addChild(folderPrefixLabel)
         addChild(projectLabel)
@@ -155,42 +179,160 @@ final class CharacterNode: SKNode {
 
     // MARK: - Status Updates
 
+    /// Activity color palette: (dot fill, dot glow, text color, pill fill, pill stroke).
+    private static func activityColors(_ activity: SessionMonitor.Activity)
+        -> (dot: NSColor, glow: NSColor, text: NSColor, pillFill: NSColor, pillStroke: NSColor)
+    {
+        switch activity {
+        case .reading:
+            return (NSColor(red: 0.35, green: 0.63, blue: 1.0, alpha: 1),
+                    NSColor(red: 0.35, green: 0.63, blue: 1.0, alpha: 0.6),
+                    NSColor(red: 0.54, green: 0.77, blue: 1.0, alpha: 1),
+                    NSColor(red: 0.35, green: 0.63, blue: 1.0, alpha: 0.15),
+                    NSColor(red: 0.35, green: 0.63, blue: 1.0, alpha: 0.3))
+        case .writing:
+            return (NSColor(red: 0.31, green: 0.78, blue: 0.47, alpha: 1),
+                    NSColor(red: 0.31, green: 0.78, blue: 0.47, alpha: 0.6),
+                    NSColor(red: 0.47, green: 0.91, blue: 0.63, alpha: 1),
+                    NSColor(red: 0.31, green: 0.78, blue: 0.47, alpha: 0.15),
+                    NSColor(red: 0.31, green: 0.78, blue: 0.47, alpha: 0.3))
+        case .running:
+            return (NSColor(red: 1.0, green: 0.78, blue: 0.24, alpha: 1),
+                    NSColor(red: 1.0, green: 0.78, blue: 0.24, alpha: 0.6),
+                    NSColor(red: 1.0, green: 0.88, blue: 0.50, alpha: 1),
+                    NSColor(red: 1.0, green: 0.78, blue: 0.24, alpha: 0.15),
+                    NSColor(red: 1.0, green: 0.78, blue: 0.24, alpha: 0.3))
+        case .testing:
+            return (NSColor(red: 0.25, green: 0.80, blue: 0.75, alpha: 1),
+                    NSColor(red: 0.25, green: 0.80, blue: 0.75, alpha: 0.6),
+                    NSColor(red: 0.45, green: 0.92, blue: 0.88, alpha: 1),
+                    NSColor(red: 0.25, green: 0.80, blue: 0.75, alpha: 0.15),
+                    NSColor(red: 0.25, green: 0.80, blue: 0.75, alpha: 0.3))
+        case .building:
+            return (NSColor(red: 0.92, green: 0.65, blue: 0.20, alpha: 1),
+                    NSColor(red: 0.92, green: 0.65, blue: 0.20, alpha: 0.6),
+                    NSColor(red: 1.0, green: 0.80, blue: 0.45, alpha: 1),
+                    NSColor(red: 0.92, green: 0.65, blue: 0.20, alpha: 0.15),
+                    NSColor(red: 0.92, green: 0.65, blue: 0.20, alpha: 0.3))
+        case .committing:
+            return (NSColor(red: 0.85, green: 0.40, blue: 0.75, alpha: 1),
+                    NSColor(red: 0.85, green: 0.40, blue: 0.75, alpha: 0.6),
+                    NSColor(red: 0.95, green: 0.58, blue: 0.88, alpha: 1),
+                    NSColor(red: 0.85, green: 0.40, blue: 0.75, alpha: 0.15),
+                    NSColor(red: 0.85, green: 0.40, blue: 0.75, alpha: 0.3))
+        case .thinking:
+            return (NSColor(red: 0.66, green: 0.51, blue: 1.0, alpha: 1),
+                    NSColor(red: 0.66, green: 0.51, blue: 1.0, alpha: 0.6),
+                    NSColor(red: 0.77, green: 0.66, blue: 1.0, alpha: 1),
+                    NSColor(red: 0.66, green: 0.51, blue: 1.0, alpha: 0.15),
+                    NSColor(red: 0.66, green: 0.51, blue: 1.0, alpha: 0.3))
+        case .processing:
+            return (NSColor(red: 0.55, green: 0.45, blue: 0.82, alpha: 1),
+                    NSColor(red: 0.55, green: 0.45, blue: 0.82, alpha: 0.5),
+                    NSColor(red: 0.70, green: 0.60, blue: 0.92, alpha: 1),
+                    NSColor(red: 0.55, green: 0.45, blue: 0.82, alpha: 0.12),
+                    NSColor(red: 0.55, green: 0.45, blue: 0.82, alpha: 0.25))
+        case .spawning:
+            return (NSColor(red: 1.0, green: 0.71, blue: 0.39, alpha: 1),
+                    NSColor(red: 1.0, green: 0.71, blue: 0.39, alpha: 0.6),
+                    NSColor(red: 1.0, green: 0.82, blue: 0.63, alpha: 1),
+                    NSColor(red: 1.0, green: 0.71, blue: 0.39, alpha: 0.15),
+                    NSColor(red: 1.0, green: 0.71, blue: 0.39, alpha: 0.3))
+        case .searching:
+            return (NSColor(red: 0.39, green: 0.82, blue: 0.86, alpha: 1),
+                    NSColor(red: 0.39, green: 0.82, blue: 0.86, alpha: 0.6),
+                    NSColor(red: 0.56, green: 0.91, blue: 0.94, alpha: 1),
+                    NSColor(red: 0.39, green: 0.82, blue: 0.86, alpha: 0.15),
+                    NSColor(red: 0.39, green: 0.82, blue: 0.86, alpha: 0.3))
+        case .asking:
+            return (NSColor(red: 1.0, green: 0.55, blue: 0.0, alpha: 1),
+                    NSColor(red: 1.0, green: 0.55, blue: 0.0, alpha: 0.6),
+                    NSColor(red: 1.0, green: 0.69, blue: 0.38, alpha: 1),
+                    NSColor(red: 1.0, green: 0.55, blue: 0.0, alpha: 0.15),
+                    NSColor(red: 1.0, green: 0.55, blue: 0.0, alpha: 0.3))
+        case .done:
+            return (NSColor(red: 0.39, green: 0.78, blue: 0.39, alpha: 1),
+                    NSColor(red: 0.39, green: 0.78, blue: 0.39, alpha: 0.6),
+                    NSColor(red: 0.56, green: 0.91, blue: 0.56, alpha: 1),
+                    NSColor(red: 0.39, green: 0.78, blue: 0.39, alpha: 0.15),
+                    NSColor(red: 0.39, green: 0.78, blue: 0.39, alpha: 0.3))
+        case .sleeping:
+            return (NSColor(red: 0.4, green: 0.4, blue: 0.47, alpha: 1),
+                    NSColor(red: 0.4, green: 0.4, blue: 0.47, alpha: 0.3),
+                    NSColor(red: 0.53, green: 0.53, blue: 0.58, alpha: 1),
+                    NSColor(red: 0.39, green: 0.39, blue: 0.47, alpha: 0.12),
+                    NSColor(red: 0.39, green: 0.39, blue: 0.47, alpha: 0.2))
+        }
+    }
+
     func updateActivity(_ activity: SessionMonitor.Activity) {
         guard activity != currentActivity else { return }
         let previousActivity = currentActivity
         currentActivity = activity
 
-        let newEmoji: String
         let newWord: String
         switch activity {
-        case .reading:   newEmoji = "📖"; newWord = "read"
-        case .writing:   newEmoji = "✏️"; newWord = "write"
-        case .running:   newEmoji = "⚡"; newWord = "run"
-        case .thinking:  newEmoji = "🧠"; newWord = "think"
-        case .spawning:  newEmoji = "🐣"; newWord = "spawn"
-        case .searching: newEmoji = "🔍"; newWord = "search"
-        case .asking:    newEmoji = "❓"; newWord = idleDurationText.map { "ask \($0)" } ?? "ask"
-        case .done:      newEmoji = "✅"; newWord = idleDurationText.map { "done \($0)" } ?? "done"
-        case .sleeping:  newEmoji = "💤"; newWord = idleDurationText ?? "idle"
+        case .reading:    newWord = "READ"
+        case .writing:    newWord = "WRITE"
+        case .running:    newWord = "RUN"
+        case .testing:    newWord = "TEST"
+        case .building:   newWord = "BUILD"
+        case .committing: newWord = "COMMIT"
+        case .thinking:   newWord = "THINK"
+        case .processing: newWord = "PROCESS"
+        case .spawning:   newWord = "SPAWN"
+        case .searching:  newWord = "SEARCH"
+        case .asking:     newWord = "ASK"
+        case .done:       newWord = "DONE"
+        case .sleeping:   newWord = "IDLE"
         }
 
-        statusLabel.run(.sequence([
-            .fadeOut(withDuration: 0.15),
-            .run { [weak self] in self?.statusLabel.text = newEmoji },
-            .fadeIn(withDuration: 0.15)
+        // Show duration outside the pill for standby states
+        durationLabel.text = Self.showsDuration(activity) ? (idleDurationText ?? "") : ""
+
+        let colors = Self.activityColors(activity)
+
+        // Animate pill color transition
+        let pillContainer = pillBG
+        let dot = statusDot
+        pillContainer.run(.sequence([
+            .fadeOut(withDuration: 0.12),
+            .run {
+                pillContainer.fillColor = colors.pillFill
+                pillContainer.strokeColor = colors.pillStroke
+            },
+            .fadeIn(withDuration: 0.12)
         ]))
+
+        dot.run(.sequence([
+            .fadeOut(withDuration: 0.12),
+            .run {
+                dot.fillColor = colors.dot
+                dot.glowWidth = 3
+            },
+            .fadeIn(withDuration: 0.12)
+        ]))
+
         activityWordLabel.run(.sequence([
-            .fadeOut(withDuration: 0.15),
+            .fadeOut(withDuration: 0.12),
             .run { [weak self] in
                 self?.activityWordLabel.text = newWord
-                if activity == .asking {
-                    self?.activityWordLabel.fontColor = .init(red: 1.0, green: 0.55, blue: 0.0, alpha: 1)
-                } else if previousActivity == .asking {
-                    self?.activityWordLabel.fontColor = .init(red: 0.63, green: 0.63, blue: 0.69, alpha: 1)
-                }
+                self?.activityWordLabel.fontColor = colors.text
             },
-            .fadeIn(withDuration: 0.15)
+            .fadeIn(withDuration: 0.12)
         ]))
+
+        // Pulsing dot for asking state
+        if activity == .asking {
+            let pulseUp = SKAction.scale(to: 1.4, duration: 0.6)
+            pulseUp.timingMode = .easeInEaseOut
+            let pulseDown = SKAction.scale(to: 0.7, duration: 0.6)
+            pulseDown.timingMode = .easeInEaseOut
+            dot.run(.repeatForever(.sequence([pulseUp, pulseDown])), withKey: "dotPulse")
+        } else if previousActivity == .asking {
+            dot.removeAction(forKey: "dotPulse")
+            dot.run(.scale(to: 1.0, duration: 0.2))
+        }
 
         if activity == .asking && previousActivity != .asking {
             showAskingGlow()
@@ -205,20 +347,21 @@ final class CharacterNode: SKNode {
         topicLabel.text = joined
     }
 
-    /// Update the idle duration and refresh the activity word label for standby states.
+    /// Whether this activity shows duration outside the pill.
+    private static func showsDuration(_ activity: SessionMonitor.Activity) -> Bool {
+        switch activity {
+        case .sleeping, .asking, .done: return true
+        default: return false
+        }
+    }
+
+    /// Update the idle duration and refresh the duration label for standby states.
     func updateIdleDuration(_ seconds: TimeInterval) {
         let newText = Self.formatIdleDuration(seconds)
         guard newText != idleDurationText else { return }
         idleDurationText = newText
-        switch currentActivity {
-        case .sleeping:
-            activityWordLabel.text = newText ?? "idle"
-        case .asking:
-            activityWordLabel.text = newText.map { "ask \($0)" } ?? "ask"
-        case .done:
-            activityWordLabel.text = newText.map { "done \($0)" } ?? "done"
-        default:
-            break
+        if Self.showsDuration(currentActivity) {
+            durationLabel.text = newText ?? ""
         }
     }
 
@@ -355,8 +498,10 @@ final class CharacterNode: SKNode {
         let s = newSize / characterSize
         cardBG.setScale(s)
         bodySprite.setScale(s)
-        statusLabel.setScale(s)
+        pillBG.setScale(s)
+        statusDot.setScale(s)
         activityWordLabel.setScale(s)
+        durationLabel.setScale(s)
         dividerNode.setScale(s)
         folderPrefixLabel.setScale(s)
         projectLabel.setScale(s)

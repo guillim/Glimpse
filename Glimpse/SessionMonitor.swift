@@ -7,15 +7,19 @@ final class SessionMonitor {
 
     /// Activity state for a single Claude Code session.
     enum Activity: Equatable {
-        case reading    // Agent is reading files (Read, Glob, Grep tools)
-        case writing    // Agent is editing/creating files (Edit, Write tools)
-        case running    // Agent is running shell commands (Bash tool)
-        case thinking   // Agent is reasoning/planning (text output, no tool_use)
-        case spawning   // Agent is launching subagents (Agent tool)
-        case searching  // Agent is searching the web (WebSearch, WebFetch tools)
-        case asking     // Agent asked the user a question (end_turn with question mark or AskUserQuestion)
-        case done       // Agent finished its task (end_turn, no question)
-        case sleeping   // Active but idle
+        case reading     // Agent is reading files (Read, Glob, Grep tools)
+        case writing     // Agent is editing/creating files (Edit, Write tools)
+        case running     // Agent is running shell commands (Bash tool — generic)
+        case testing     // Agent is running tests (Bash: test/spec/jest/pytest etc.)
+        case building    // Agent is compiling/building (Bash: build/make/tsc etc.)
+        case committing  // Agent is doing git operations (Bash: git commit/push/add etc.)
+        case thinking    // Agent is reasoning/planning (text output, no tool_use)
+        case processing  // User sent a message, agent hasn't responded yet
+        case spawning    // Agent is launching subagents (Agent tool)
+        case searching   // Agent is searching the web (WebSearch, WebFetch tools)
+        case asking      // Agent asked the user a question (end_turn with question mark or AskUserQuestion)
+        case done        // Agent finished its task (end_turn, no question)
+        case sleeping    // Active but idle
     }
 
     /// Snapshot of a discovered session.
@@ -316,25 +320,29 @@ final class SessionMonitor {
     static func classifyActivity(fileURL: URL, lastModified: Date, now: Date) -> ScanResult {
         let empty = ScanResult(activity: .sleeping, topics: [])
 
-        let tailBytes = 64 * 1024
         guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return empty }
         defer { try? handle.close() }
 
         let fileSize = handle.seekToEndOfFile()
-        let readOffset = fileSize > UInt64(tailBytes) ? fileSize - UInt64(tailBytes) : 0
-        handle.seek(toFileOffset: readOffset)
-        let data = handle.availableData
-        guard let content = String(data: data, encoding: .utf8) else {
+
+        // Activity classification: small tail (64KB) — only recent lines matter.
+        let activityTailBytes = 64 * 1024
+        let activityOffset = fileSize > UInt64(activityTailBytes) ? fileSize - UInt64(activityTailBytes) : 0
+        handle.seek(toFileOffset: activityOffset)
+        let activityData = handle.availableData
+        guard let activityContent = String(data: activityData, encoding: .utf8) else {
             return empty
         }
 
-        let lines = content.components(separatedBy: .newlines)
+        let lines = activityContent.components(separatedBy: .newlines)
             .suffix(120)
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
             .suffix(100)
 
+        // Topic extraction: wider tail (512KB) — user messages are sparse among tool output.
+        let topics = extractTopics(handle: handle, fileSize: fileSize)
+
         var activity: Activity = .sleeping
-        var topics: [String] = []
 
         var sawSessionReset = false
 
@@ -354,29 +362,6 @@ final class SessionMonitor {
                     let content = json["content"] as? String ?? ""
                     if content.contains("compacted") || content.contains("Conversation") {
                         sawSessionReset = true
-                    }
-                }
-            }
-
-            // Extract topics from user messages (collect up to 3, walking backwards)
-            if topics.count < 3, type == "user",
-               let message = json["message"] as? [String: Any] {
-                // Handle both plain string and structured content blocks
-                let msgContent: String? = {
-                    if let str = message["content"] as? String { return str }
-                    if let blocks = message["content"] as? [[String: Any]] {
-                        return blocks.compactMap { block -> String? in
-                            guard block["type"] as? String == "text" else { return nil }
-                            return block["text"] as? String
-                        }.joined(separator: " ")
-                    }
-                    return nil
-                }()
-                if let content = msgContent {
-                    let extracted = Self.extractTopic(from: content)
-                    if extracted.count >= 5, extracted.contains(" "),
-                       !topics.contains(where: { $0.lowercased() == extracted.lowercased() }) {
-                        topics.append(extracted)
                     }
                 }
             }
@@ -424,7 +409,7 @@ final class SessionMonitor {
                 if !toolNames.isEmpty {
                     let toolSet = Set(toolNames)
                     if toolSet.contains("Bash") {
-                        activity = .running
+                        activity = Self.classifyBashCommand(blocks: blocks)
                     } else if toolSet.contains("Agent") {
                         activity = .spawning
                     } else if !toolSet.isDisjoint(with: ["WebSearch", "WebFetch"]) {
@@ -444,12 +429,136 @@ final class SessionMonitor {
                 }
             }
 
-            // User message — session is active, agent is probably processing
+            // User message — session is active, agent is processing input
             if activity == .sleeping, type == "user" {
-                activity = .thinking
+                activity = .processing
             }
         }
 
         return ScanResult(activity: activity, topics: topics.reversed())
+    }
+
+    // MARK: - Topic Extraction (wide scan)
+
+    /// Extract up to 3 topics from user messages, scanning a wider tail (512KB).
+    /// Only parses lines that look like user messages (fast string pre-filter).
+    private static func extractTopics(handle: FileHandle, fileSize: UInt64) -> [String] {
+        let topicTailBytes = 512 * 1024
+        let topicOffset = fileSize > UInt64(topicTailBytes) ? fileSize - UInt64(topicTailBytes) : 0
+        handle.seek(toFileOffset: topicOffset)
+        let topicData = handle.availableData
+        guard let topicContent = String(data: topicData, encoding: .utf8) else { return [] }
+
+        // Pre-filter: only parse lines that contain "type":"user" (avoids parsing huge tool_result lines)
+        let candidateLines = topicContent.components(separatedBy: .newlines)
+            .filter { $0.contains("\"type\":\"user\"") }
+
+        var topics: [String] = []
+
+        // Walk backwards through candidate lines (most recent first)
+        for line in candidateLines.reversed() {
+            guard topics.count < 3 else { break }
+
+            guard let jsonData = line.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                  json["type"] as? String == "user",
+                  let message = json["message"] as? [String: Any] else { continue }
+
+            // Extract text content (plain string or structured blocks)
+            let msgContent: String? = {
+                if let str = message["content"] as? String { return str }
+                if let blocks = message["content"] as? [[String: Any]] {
+                    let texts = blocks.compactMap { block -> String? in
+                        guard block["type"] as? String == "text" else { return nil }
+                        return block["text"] as? String
+                    }
+                    return texts.isEmpty ? nil : texts.joined(separator: " ")
+                }
+                return nil
+            }()
+
+            if let content = msgContent {
+                let extracted = Self.extractTopic(from: content)
+                if extracted.count >= 5, extracted.contains(" "),
+                   !topics.contains(where: { $0.lowercased() == extracted.lowercased() }) {
+                    topics.append(extracted)
+                }
+            }
+        }
+
+        return topics.reversed()  // oldest first
+    }
+
+    // MARK: - Bash Command Classification
+
+    /// Patterns for git commands.
+    private static let gitPatterns = [
+        "git commit", "git push", "git add", "git merge", "git rebase",
+        "git cherry-pick", "git tag", "git stash", "git pull", "git fetch",
+        "git checkout", "git switch", "git branch", "git reset", "git revert",
+        "git diff", "git log", "git status", "git am", "git format-patch"
+    ]
+
+    /// Patterns for test commands.
+    private static let testPatterns = [
+        "npm test", "npm run test", "npx jest", "npx vitest", "npx mocha",
+        "yarn test", "pnpm test", "bun test",
+        "pytest", "python -m pytest", "python -m unittest",
+        "cargo test", "go test", "swift test",
+        "xcodebuild test", "xctest",
+        "rspec", "bundle exec rspec", "rake test", "rake spec",
+        "dotnet test", "mvn test", "gradle test",
+        "make test", "make check"
+    ]
+
+    /// Patterns for build/compile commands.
+    private static let buildPatterns = [
+        "npm run build", "npx webpack", "npx tsc", "npx vite build",
+        "yarn build", "pnpm build", "bun build",
+        "cargo build", "cargo clippy", "rustc",
+        "go build", "go install",
+        "swift build", "xcodebuild", "xcodebuild -scheme",
+        "make", "cmake", "ninja",
+        "gcc", "g++", "clang", "clang++", "javac",
+        "dotnet build", "mvn compile", "mvn package", "gradle build",
+        "docker build", "tsc"
+    ]
+
+    /// Inspect Bash tool_use blocks to classify the command being run.
+    private static func classifyBashCommand(blocks: [[String: Any]]) -> Activity {
+        // Extract the command string from the last Bash tool_use block
+        for block in blocks.reversed() {
+            guard block["type"] as? String == "tool_use",
+                  block["name"] as? String == "Bash",
+                  let input = block["input"] as? [String: Any],
+                  let command = input["command"] as? String else { continue }
+
+            let cmd = command.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Check git first (most specific)
+            for pattern in gitPatterns {
+                if cmd.hasPrefix(pattern) || cmd.contains("&& \(pattern)") || cmd.contains("; \(pattern)") {
+                    return .committing
+                }
+            }
+
+            // Check test patterns
+            for pattern in testPatterns {
+                if cmd.hasPrefix(pattern) || cmd.contains("&& \(pattern)") || cmd.contains("; \(pattern)") {
+                    return .testing
+                }
+            }
+
+            // Check build patterns
+            for pattern in buildPatterns {
+                if cmd.hasPrefix(pattern) || cmd.contains("&& \(pattern)") || cmd.contains("; \(pattern)") {
+                    return .building
+                }
+            }
+
+            return .running
+        }
+
+        return .running
     }
 }

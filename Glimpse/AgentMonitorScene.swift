@@ -1,7 +1,6 @@
 // Glimpse/AgentMonitorScene.swift
 import SpriteKit
 import AppKit
-import ApplicationServices
 
 /// SpriteKit scene displaying characters for active Claude Code sessions.
 final class AgentMonitorScene: SKScene {
@@ -131,23 +130,30 @@ final class AgentMonitorScene: SKScene {
         return nil
     }
 
-    /// Resolve a session ID to its parent GUI app and activate the exact tab/window.
+    /// Resolve a session ID to its parent GUI app and activate it.
     func activateAppForSession(_ sessionID: String) {
+        NSLog("[Glimpse] activateAppForSession: %@", sessionID)
         DispatchQueue.global(qos: .userInitiated).async {
-            guard let pid = Self.findSessionPID(sessionID) else { return }
-            guard let tty = Self.resolveTty(pid: pid) else { return }
-            guard let app = Self.findParentGUIApp(pid: pid) else { return }
+            guard let pid = Self.findSessionPID(sessionID) else {
+                NSLog("[Glimpse] no PID"); return
+            }
+            guard let app = Self.findParentGUIApp(pid: pid) else {
+                NSLog("[Glimpse] no parent app"); return
+            }
+            NSLog("[Glimpse] activating %@ pid=%d", app.bundleIdentifier ?? "?", pid)
 
-            let bundleID = app.bundleIdentifier ?? ""
-
-            if bundleID == "com.googlecode.iterm2" {
-                Self.focusITermWindow(app: app, tty: tty)
-            } else if bundleID == "com.apple.Terminal" {
-                Self.focusTerminalTab(tty: tty)
-            } else {
-                DispatchQueue.main.async {
-                    app.activate(options: [.activateIgnoringOtherApps])
+            // Select the right tab via AppleScript, then activate the app
+            if let tty = Self.resolveTty(pid: pid) {
+                let bundleID = app.bundleIdentifier ?? ""
+                if bundleID == "com.googlecode.iterm2" {
+                    Self.selectITermTab(tty: tty)
+                } else if bundleID == "com.apple.Terminal" {
+                    Self.selectTerminalTab(tty: tty)
                 }
+            }
+
+            DispatchQueue.main.async {
+                app.activate(options: [.activateIgnoringOtherApps])
             }
         }
     }
@@ -188,56 +194,27 @@ final class AgentMonitorScene: SKScene {
         return tty
     }
 
-    /// Focus the exact iTerm2 window+tab for a tty using Accessibility API.
-    /// Step 1: AppleScript selects the right tab and returns the window index (1-based).
-    /// Step 2: Accessibility API raises that specific window (triggers Space switch).
-    private static func focusITermWindow(app: NSRunningApplication, tty: String) {
+    /// Select the right tab in iTerm2 by tty. No Space switching — just tab selection.
+    private static func selectITermTab(tty: String) {
         let devTty = tty.hasPrefix("/dev/") ? tty : "/dev/\(tty)"
-
-        // Step 1: select the tab and get the 1-based window index
         let script = """
         tell application "iTerm2"
-            set winIndex to 0
-            set winCount to 0
             repeat with w in windows
-                set winCount to winCount + 1
                 repeat with t in tabs of w
                     repeat with s in sessions of t
                         if tty of s is "\(devTty)" then
                             select t
-                            set winIndex to winCount
                         end if
                     end repeat
                 end repeat
             end repeat
-            return winIndex
         end tell
         """
-        let winIndex = runAppleScriptReturningInt(script)
-
-        // Step 2: raise the exact window via Accessibility API
-        if winIndex > 0 {
-            let appElement = AXUIElementCreateApplication(app.processIdentifier)
-            var windowsRef: CFTypeRef?
-            AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef)
-            if let windows = windowsRef as? [AXUIElement] {
-                // AX window list is 0-based; AppleScript index is 1-based
-                let idx = winIndex - 1
-                if idx < windows.count {
-                    AXUIElementPerformAction(windows[idx], kAXRaiseAction as CFString)
-                    AXUIElementSetAttributeValue(windows[idx], kAXMainAttribute as CFString, true as CFTypeRef)
-                }
-            }
-        }
-
-        DispatchQueue.main.async {
-            app.activate(options: [.activateIgnoringOtherApps])
-        }
+        runAppleScript(script)
     }
 
-    /// Focus the exact Terminal.app tab whose tty matches.
-    @discardableResult
-    private static func focusTerminalTab(tty: String) -> Bool {
+    /// Select the right tab in Terminal.app by tty.
+    private static func selectTerminalTab(tty: String) {
         let devTty = tty.hasPrefix("/dev/") ? tty : "/dev/\(tty)"
         let script = """
         tell application "Terminal"
@@ -245,23 +222,20 @@ final class AgentMonitorScene: SKScene {
                 repeat with t in tabs of w
                     if tty of t is "\(devTty)" then
                         set selected tab of w to t
-                        set index of w to 1
-                        activate
-                        return "ok"
                     end if
                 end repeat
             end repeat
         end tell
         """
-        return runAppleScript(script)
+        runAppleScript(script)
     }
 
-    /// Run an AppleScript via osascript using stdin (handles multiline scripts).
-    /// Returns true if the script executed successfully.
+    /// Run an AppleScript via osascript using stdin.
+    @discardableResult
     private static func runAppleScript(_ source: String) -> Bool {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-"]  // read from stdin
+        process.arguments = ["-"]
         let inputPipe = Pipe()
         process.standardInput = inputPipe
         process.standardOutput = FileHandle.nullDevice
