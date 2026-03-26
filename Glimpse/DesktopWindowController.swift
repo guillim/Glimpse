@@ -65,10 +65,7 @@ final class DesktopWindowController: NSWindowController {
     }
 
     private func handleGlobalClick(_ event: NSEvent) {
-        guard let scene = agentScene, let skView = skView else {
-            NSLog("[Glimpse] handleGlobalClick: no scene or skView")
-            return
-        }
+        guard let scene = agentScene, let skView = skView else { return }
 
         let screenPoint = event.locationInWindow
         guard let window = window else { return }
@@ -77,7 +74,6 @@ final class DesktopWindowController: NSWindowController {
         let scenePoint = scene.convertPoint(fromView: viewPoint)
 
         if let node = scene.characterNode(at: scenePoint) {
-            NSLog("[Glimpse] HIT character %@", node.sessionID)
             scene.activateAppForSession(node.sessionID)
         }
     }

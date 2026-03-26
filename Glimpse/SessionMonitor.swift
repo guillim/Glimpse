@@ -345,6 +345,10 @@ final class SessionMonitor {
         var activity: Activity = .sleeping
 
         var sawSessionReset = false
+        // Track whether we've seen a tool_result after the most recent assistant tool_use.
+        // Walking backwards: if we hit an assistant tool_use before seeing any tool_result,
+        // the tool hasn't executed yet — the session is waiting for user permission.
+        var sawToolResult = false
 
         for line in lines.reversed() {
             guard let jsonData = line.data(using: .utf8),
@@ -363,6 +367,20 @@ final class SessionMonitor {
                     if content.contains("compacted") || content.contains("Conversation") {
                         sawSessionReset = true
                     }
+                }
+            }
+
+            // Track tool_result messages (appear as user messages with tool_result content blocks,
+            // or as tool_result type entries). These come after the assistant's tool_use in the file,
+            // so we see them first when walking backwards.
+            if activity == .sleeping, !sawToolResult {
+                if type == "tool_result" {
+                    sawToolResult = true
+                } else if type == "user",
+                          let message = json["message"] as? [String: Any],
+                          let blocks = message["content"] as? [[String: Any]] {
+                    let hasToolResult = blocks.contains { $0["type"] as? String == "tool_result" }
+                    if hasToolResult { sawToolResult = true }
                 }
             }
 
@@ -407,19 +425,25 @@ final class SessionMonitor {
                 }
 
                 if !toolNames.isEmpty {
-                    let toolSet = Set(toolNames)
-                    if toolSet.contains("Bash") {
-                        activity = Self.classifyBashCommand(blocks: blocks)
-                    } else if toolSet.contains("Agent") {
-                        activity = .spawning
-                    } else if !toolSet.isDisjoint(with: ["WebSearch", "WebFetch"]) {
-                        activity = .searching
-                    } else if !toolSet.isDisjoint(with: ["Edit", "Write"]) {
-                        activity = .writing
-                    } else if !toolSet.isDisjoint(with: ["Read", "Glob", "Grep"]) {
-                        activity = .reading
+                    // If no tool_result followed this tool_use, the tool hasn't been
+                    // approved/executed yet — the session is waiting for user permission.
+                    if !sawToolResult {
+                        activity = .asking
                     } else {
-                        activity = .thinking
+                        let toolSet = Set(toolNames)
+                        if toolSet.contains("Bash") {
+                            activity = Self.classifyBashCommand(blocks: blocks)
+                        } else if toolSet.contains("Agent") {
+                            activity = .spawning
+                        } else if !toolSet.isDisjoint(with: ["WebSearch", "WebFetch"]) {
+                            activity = .searching
+                        } else if !toolSet.isDisjoint(with: ["Edit", "Write"]) {
+                            activity = .writing
+                        } else if !toolSet.isDisjoint(with: ["Read", "Glob", "Grep"]) {
+                            activity = .reading
+                        } else {
+                            activity = .thinking
+                        }
                     }
                 } else {
                     let hasText = blocks.contains { $0["type"] as? String == "text" }

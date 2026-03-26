@@ -132,15 +132,9 @@ final class AgentMonitorScene: SKScene {
 
     /// Resolve a session ID to its parent GUI app and activate it.
     func activateAppForSession(_ sessionID: String) {
-        NSLog("[Glimpse] activateAppForSession: %@", sessionID)
         DispatchQueue.global(qos: .userInitiated).async {
-            guard let pid = Self.findSessionPID(sessionID) else {
-                NSLog("[Glimpse] no PID"); return
-            }
-            guard let app = Self.findParentGUIApp(pid: pid) else {
-                NSLog("[Glimpse] no parent app"); return
-            }
-            NSLog("[Glimpse] activating %@ pid=%d", app.bundleIdentifier ?? "?", pid)
+            guard let pid = Self.findSessionPID(sessionID) else { return }
+            guard let app = Self.findParentGUIApp(pid: pid) else { return }
 
             // Select the right tab via AppleScript, then activate the app
             if let tty = Self.resolveTty(pid: pid) {
