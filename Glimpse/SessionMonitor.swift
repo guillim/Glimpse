@@ -193,21 +193,51 @@ final class SessionMonitor {
     ]
 
     /// Extract a short topic from the user's message using keyword-based extraction.
-    /// Strips filler prefixes, finds the action verb and its object, or falls back
-    /// to meaningful-word extraction when no verb is found.
+    /// Scans all lines for the best action-verb match, falls back to meaningful words.
     static func extractTopic(from message: String) -> String {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
 
-        let firstLine = trimmed.components(separatedBy: .newlines).first ?? trimmed
+        let messageLines = trimmed.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
 
+        // Try each line for an action-verb match (best signal)
+        for line in messageLines {
+            let stripped = stripNoise(line)
+            guard !stripped.isEmpty else { continue }
+            let words = stripped.lowercased()
+                .components(separatedBy: .whitespaces)
+                .filter { !$0.isEmpty }
+            if let result = extractVerbPhrase(from: words) {
+                return capTopic(result)
+            }
+        }
+
+        // No verb found on any line: take meaningful words from the first non-empty line
+        for line in messageLines {
+            let stripped = stripNoise(line)
+            guard !stripped.isEmpty else { continue }
+            let words = stripped.lowercased()
+                .components(separatedBy: .whitespaces)
+                .filter { !$0.isEmpty }
+            let meaningful = words.filter { !stopWords.contains($0) }.prefix(4)
+            if !meaningful.isEmpty {
+                return capTopic(meaningful.joined(separator: " "))
+            }
+        }
+
+        return ""
+    }
+
+    /// Strip prompt characters and filler prefixes from a line.
+    private static func stripNoise(_ line: String) -> String {
+        var stripped = line
         // Strip leading prompt characters
-        var stripped = firstLine
         while let first = stripped.unicodeScalars.first,
               first == "\u{276F}" || first == ">" || first == "$" || first == "%" {
             stripped = String(stripped.dropFirst()).trimmingCharacters(in: .whitespaces)
         }
-
         // Strip filler prefixes iteratively
         var didStrip = true
         while didStrip {
@@ -222,30 +252,22 @@ final class SessionMonitor {
                 }
             }
         }
+        return stripped
+    }
 
-        guard !stripped.isEmpty else { return "" }
-
-        let words = stripped.lowercased()
-            .components(separatedBy: .whitespaces)
-            .filter { !$0.isEmpty }
-
-        guard !words.isEmpty else { return "" }
-
-        // Scan for first action verb
-        if let verbIndex = words.firstIndex(where: { actionVerbs.contains($0) }) {
-            var collected = [words[verbIndex]]
-            for word in words[(verbIndex + 1)...] {
-                if collected.count >= 4 { break }
-                if !stopWords.contains(word) {
-                    collected.append(word)
-                }
-            }
-            return capTopic(collected.joined(separator: " "))
+    /// Extract a "verb + up to 3 objects" phrase if an action verb is found.
+    private static func extractVerbPhrase(from words: [String]) -> String? {
+        guard let verbIndex = words.firstIndex(where: { actionVerbs.contains($0) }) else {
+            return nil
         }
-
-        // No verb found: drop stop words, take first 4 remaining
-        let meaningful = words.filter { !stopWords.contains($0) }.prefix(4)
-        return capTopic(meaningful.joined(separator: " "))
+        var collected = [words[verbIndex]]
+        for word in words[(verbIndex + 1)...] {
+            if collected.count >= 4 { break }
+            if !stopWords.contains(word) {
+                collected.append(word)
+            }
+        }
+        return collected.joined(separator: " ")
     }
 
     /// Cap topic at 30 characters, truncating to last complete word within 27 chars.
@@ -294,7 +316,7 @@ final class SessionMonitor {
     static func classifyActivity(fileURL: URL, lastModified: Date, now: Date) -> ScanResult {
         let empty = ScanResult(activity: .sleeping, topics: [])
 
-        let tailBytes = 32 * 1024
+        let tailBytes = 64 * 1024
         guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return empty }
         defer { try? handle.close() }
 
@@ -307,9 +329,9 @@ final class SessionMonitor {
         }
 
         let lines = content.components(separatedBy: .newlines)
-            .suffix(30)
+            .suffix(120)
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-            .suffix(20)
+            .suffix(100)
 
         var activity: Activity = .sleeping
         var topics: [String] = []
@@ -339,11 +361,21 @@ final class SessionMonitor {
             // Extract topics from user messages (collect up to 3, walking backwards)
             if topics.count < 3, type == "user",
                let message = json["message"] as? [String: Any] {
-                let msgContent = message["content"] as? String
-                    ?? (message["role"] as? String == "user" ? message["content"] as? String : nil)
+                // Handle both plain string and structured content blocks
+                let msgContent: String? = {
+                    if let str = message["content"] as? String { return str }
+                    if let blocks = message["content"] as? [[String: Any]] {
+                        return blocks.compactMap { block -> String? in
+                            guard block["type"] as? String == "text" else { return nil }
+                            return block["text"] as? String
+                        }.joined(separator: " ")
+                    }
+                    return nil
+                }()
                 if let content = msgContent {
                     let extracted = Self.extractTopic(from: content)
-                    if !extracted.isEmpty {
+                    if extracted.count >= 5, extracted.contains(" "),
+                       !topics.contains(where: { $0.lowercased() == extracted.lowercased() }) {
                         topics.append(extracted)
                     }
                 }

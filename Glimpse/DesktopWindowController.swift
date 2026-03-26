@@ -79,7 +79,6 @@ final class DesktopWindowController: NSWindowController {
         let scenePoint = scene.convertPoint(fromView: viewPoint)
 
         if let node = scene.characterNode(at: scenePoint) {
-            NSLog("[Glimpse] Click on character %@", node.sessionID)
             scene.activateAppForSession(node.sessionID)
         }
     }

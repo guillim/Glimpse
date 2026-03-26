@@ -1,6 +1,7 @@
 // Glimpse/AgentMonitorScene.swift
 import SpriteKit
 import AppKit
+import ApplicationServices
 
 /// SpriteKit scene displaying characters for active Claude Code sessions.
 final class AgentMonitorScene: SKScene {
@@ -130,21 +131,23 @@ final class AgentMonitorScene: SKScene {
         return nil
     }
 
-    /// Resolve a session ID to its parent GUI app and activate it.
+    /// Resolve a session ID to its parent GUI app and activate the exact tab/window.
     func activateAppForSession(_ sessionID: String) {
         DispatchQueue.global(qos: .userInitiated).async {
-            guard let pid = Self.findSessionPID(sessionID) else {
-                NSLog("[Glimpse] No PID found for session %@", sessionID)
-                return
-            }
-            guard let app = Self.findParentGUIApp(pid: pid) else {
-                NSLog("[Glimpse] No parent GUI app found for PID %d", pid)
-                return
-            }
-            NSLog("[Glimpse] Activating %@ (PID %d) for session %@",
-                  app.localizedName ?? "unknown", app.processIdentifier, sessionID)
-            DispatchQueue.main.async {
-                app.activate(options: [.activateIgnoringOtherApps])
+            guard let pid = Self.findSessionPID(sessionID) else { return }
+            guard let tty = Self.resolveTty(pid: pid) else { return }
+            guard let app = Self.findParentGUIApp(pid: pid) else { return }
+
+            let bundleID = app.bundleIdentifier ?? ""
+
+            if bundleID == "com.googlecode.iterm2" {
+                Self.focusITermWindow(app: app, tty: tty)
+            } else if bundleID == "com.apple.Terminal" {
+                Self.focusTerminalTab(tty: tty)
+            } else {
+                DispatchQueue.main.async {
+                    app.activate(options: [.activateIgnoringOtherApps])
+                }
             }
         }
     }
@@ -168,6 +171,112 @@ final class AgentMonitorScene: SKScene {
         return nil
     }
 
+    /// Resolve the controlling tty for a process by walking up the tree.
+    /// Returns a tty name like "ttys003".
+    private static func resolveTty(pid: Int) -> String? {
+        let pipe = Pipe()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-o", "tty=", "-p", "\(pid)"]
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
+        process.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let tty = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let tty, !tty.isEmpty, tty != "??" else { return nil }
+        return tty
+    }
+
+    /// Focus the exact iTerm2 window+tab for a tty using Accessibility API.
+    /// Step 1: AppleScript selects the right tab and returns the window index (1-based).
+    /// Step 2: Accessibility API raises that specific window (triggers Space switch).
+    private static func focusITermWindow(app: NSRunningApplication, tty: String) {
+        let devTty = tty.hasPrefix("/dev/") ? tty : "/dev/\(tty)"
+
+        // Step 1: select the tab and get the 1-based window index
+        let script = """
+        tell application "iTerm2"
+            set winIndex to 0
+            set winCount to 0
+            repeat with w in windows
+                set winCount to winCount + 1
+                repeat with t in tabs of w
+                    repeat with s in sessions of t
+                        if tty of s is "\(devTty)" then
+                            select t
+                            set winIndex to winCount
+                        end if
+                    end repeat
+                end repeat
+            end repeat
+            return winIndex
+        end tell
+        """
+        let winIndex = runAppleScriptReturningInt(script)
+
+        // Step 2: raise the exact window via Accessibility API
+        if winIndex > 0 {
+            let appElement = AXUIElementCreateApplication(app.processIdentifier)
+            var windowsRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef)
+            if let windows = windowsRef as? [AXUIElement] {
+                // AX window list is 0-based; AppleScript index is 1-based
+                let idx = winIndex - 1
+                if idx < windows.count {
+                    AXUIElementPerformAction(windows[idx], kAXRaiseAction as CFString)
+                    AXUIElementSetAttributeValue(windows[idx], kAXMainAttribute as CFString, true as CFTypeRef)
+                }
+            }
+        }
+
+        DispatchQueue.main.async {
+            app.activate(options: [.activateIgnoringOtherApps])
+        }
+    }
+
+    /// Focus the exact Terminal.app tab whose tty matches.
+    @discardableResult
+    private static func focusTerminalTab(tty: String) -> Bool {
+        let devTty = tty.hasPrefix("/dev/") ? tty : "/dev/\(tty)"
+        let script = """
+        tell application "Terminal"
+            repeat with w in windows
+                repeat with t in tabs of w
+                    if tty of t is "\(devTty)" then
+                        set selected tab of w to t
+                        set index of w to 1
+                        activate
+                        return "ok"
+                    end if
+                end repeat
+            end repeat
+        end tell
+        """
+        return runAppleScript(script)
+    }
+
+    /// Run an AppleScript via osascript using stdin (handles multiline scripts).
+    /// Returns true if the script executed successfully.
+    private static func runAppleScript(_ source: String) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-"]  // read from stdin
+        let inputPipe = Pipe()
+        process.standardInput = inputPipe
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            inputPipe.fileHandleForWriting.write(source.data(using: .utf8)!)
+            inputPipe.fileHandleForWriting.closeFile()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }
+
     /// Walk up the process tree from a PID to find the first GUI application.
     private static func findParentGUIApp(pid: Int) -> NSRunningApplication? {
         var current = pid
@@ -177,13 +286,11 @@ final class AgentMonitorScene: SKScene {
             guard !visited.contains(current) else { break }
             visited.insert(current)
 
-            // Check if this PID is a running GUI app
             if let app = NSRunningApplication(processIdentifier: pid_t(current)),
                app.activationPolicy == .regular {
                 return app
             }
 
-            // Get parent PID via sysctl
             guard let ppid = parentPID(of: current) else { break }
             current = ppid
         }
