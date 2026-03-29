@@ -132,6 +132,20 @@ final class AgentMonitorScene: SKScene {
 
     /// Resolve a session ID to its parent GUI app and activate it.
     func activateAppForSession(_ sessionID: String) {
+        // Cursor sessions: just bring Cursor to front
+        if sessionID.hasPrefix("cursor-") {
+            DispatchQueue.global(qos: .userInitiated).async {
+                let workspace = NSWorkspace.shared
+                if let cursorURL = workspace.urlForApplication(withBundleIdentifier: "com.todesktop.230313mzl4w4u92") {
+                    DispatchQueue.main.async {
+                        workspace.openApplication(at: cursorURL, configuration: NSWorkspace.OpenConfiguration())
+                    }
+                }
+            }
+            return
+        }
+
+        // Claude Code sessions: find parent terminal and activate
         DispatchQueue.global(qos: .userInitiated).async {
             guard let pid = Self.findSessionPID(sessionID) else { return }
             guard let app = Self.findParentGUIApp(pid: pid) else { return }
