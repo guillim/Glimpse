@@ -49,6 +49,9 @@ final class SessionMonitor {
     /// Serial queue for file I/O and JSON parsing — keeps the main thread free.
     private let scanQueue = DispatchQueue(label: "com.glimpse.session-monitor", qos: .utility)
 
+    /// Provider for Cursor IDE agent sessions.
+    private let cursorProvider = CursorSessionProvider()
+
     /// Base directory for Claude Code projects.
     private let claudeProjectsDir: URL = {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -151,6 +154,10 @@ final class SessionMonitor {
                 ))
             }
         }
+
+        // Merge Cursor agent sessions
+        let cursorSessions = cursorProvider.discoverSessions(now: now)
+        sessions.append(contentsOf: cursorSessions)
 
         // Prune cache entries for sessions no longer present.
         let currentIDs = Set(sessions.map(\.id))
