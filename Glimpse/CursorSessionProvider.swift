@@ -132,13 +132,23 @@ final class CursorSessionProvider {
 
     // MARK: - Activity Classification
 
+    private static let readingTools: Set<String> = [
+        "read_file_v2", "list_dir_v2", "ripgrep_raw_search",
+        "glob_file_search", "semantic_search_full"
+    ]
+    private static let writingTools: Set<String> = ["edit_file_v2", "delete_file"]
+    private static let searchingTools: Set<String> = ["web_search", "web_fetch"]
+    private static let thinkingTools: Set<String> = ["create_plan", "task_v2", "todo_write"]
+
     /// Classify the activity of an active Cursor session by reading its latest bubbles.
     private func classifyActivity(db: OpaquePointer, composerId: String) -> SessionMonitor.Activity {
         let sql = "SELECT value FROM cursorDiskKV WHERE key LIKE ?1 ORDER BY key DESC LIMIT 5"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return .thinking }
         let pattern = "bubbleId:\(composerId):%"
-        sqlite3_bind_text(stmt, 1, (pattern as NSString).utf8String, -1, nil)
+        _ = pattern.withCString { cStr in
+            sqlite3_bind_text(stmt, 1, cStr, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+        }
         defer { sqlite3_finalize(stmt) }
 
         while sqlite3_step(stmt) == SQLITE_ROW {
@@ -184,24 +194,10 @@ final class CursorSessionProvider {
                 return .running
             }
 
-            // Reading tools
-            let readingTools: Set<String> = [
-                "read_file_v2", "list_dir_v2", "ripgrep_raw_search",
-                "glob_file_search", "semantic_search_full"
-            ]
-            if readingTools.contains(toolName) { return .reading }
-
-            // Writing tools
-            let writingTools: Set<String> = ["edit_file_v2", "delete_file"]
-            if writingTools.contains(toolName) { return .writing }
-
-            // Searching tools
-            let searchingTools: Set<String> = ["web_search", "web_fetch"]
-            if searchingTools.contains(toolName) { return .searching }
-
-            // Planning/thinking tools
-            let thinkingTools: Set<String> = ["create_plan", "task_v2", "todo_write"]
-            if thinkingTools.contains(toolName) { return .thinking }
+            if Self.readingTools.contains(toolName) { return .reading }
+            if Self.writingTools.contains(toolName) { return .writing }
+            if Self.searchingTools.contains(toolName) { return .searching }
+            if Self.thinkingTools.contains(toolName) { return .thinking }
 
             // MCP or other tools
             return .running
