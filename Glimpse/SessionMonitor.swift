@@ -548,41 +548,38 @@ final class SessionMonitor {
         "docker build", "tsc"
     ]
 
+    /// Classify a raw terminal command string into an activity.
+    /// Shared by Claude Code and Cursor session providers.
+    static func classifyTerminalCommand(_ command: String) -> Activity {
+        let cmd = command.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+        for pattern in gitPatterns {
+            if cmd.hasPrefix(pattern) || cmd.contains("&& \(pattern)") || cmd.contains("; \(pattern)") {
+                return .committing
+            }
+        }
+        for pattern in testPatterns {
+            if cmd.hasPrefix(pattern) || cmd.contains("&& \(pattern)") || cmd.contains("; \(pattern)") {
+                return .testing
+            }
+        }
+        for pattern in buildPatterns {
+            if cmd.hasPrefix(pattern) || cmd.contains("&& \(pattern)") || cmd.contains("; \(pattern)") {
+                return .building
+            }
+        }
+        return .running
+    }
+
     /// Inspect Bash tool_use blocks to classify the command being run.
     private static func classifyBashCommand(blocks: [[String: Any]]) -> Activity {
-        // Extract the command string from the last Bash tool_use block
         for block in blocks.reversed() {
             guard block["type"] as? String == "tool_use",
                   block["name"] as? String == "Bash",
                   let input = block["input"] as? [String: Any],
                   let command = input["command"] as? String else { continue }
-
-            let cmd = command.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-
-            // Check git first (most specific)
-            for pattern in gitPatterns {
-                if cmd.hasPrefix(pattern) || cmd.contains("&& \(pattern)") || cmd.contains("; \(pattern)") {
-                    return .committing
-                }
-            }
-
-            // Check test patterns
-            for pattern in testPatterns {
-                if cmd.hasPrefix(pattern) || cmd.contains("&& \(pattern)") || cmd.contains("; \(pattern)") {
-                    return .testing
-                }
-            }
-
-            // Check build patterns
-            for pattern in buildPatterns {
-                if cmd.hasPrefix(pattern) || cmd.contains("&& \(pattern)") || cmd.contains("; \(pattern)") {
-                    return .building
-                }
-            }
-
-            return .running
+            return classifyTerminalCommand(command)
         }
-
         return .running
     }
 }
