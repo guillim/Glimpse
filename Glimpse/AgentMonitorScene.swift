@@ -12,7 +12,7 @@ final class AgentMonitorScene: SKScene {
     /// Empty-state label shown when no sessions are active.
     private let emptyLabel: SKLabelNode = {
         let label = SKLabelNode(fontNamed: "Menlo")
-        label.text = "No Claude sessions active — start one to see your agent!"
+        label.text = "No agent sessions active — start one to see your agent!"
         label.fontSize = 16
         label.fontColor = .init(white: 0.4, alpha: 1)
         label.verticalAlignmentMode = .center
