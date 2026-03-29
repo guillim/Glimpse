@@ -14,6 +14,7 @@
 		A1000007 /* CharacterGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000008 /* CharacterGenerator.swift */; };
 		A1000008 /* CharacterNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000009 /* CharacterNode.swift */; };
 		A1000009 /* AgentMonitorScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000010 /* AgentMonitorScene.swift */; };
+		A1000010 /* CursorSessionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000011 /* CursorSessionProvider.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -25,6 +26,7 @@
 		A2000008 /* CharacterGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterGenerator.swift; sourceTree = "<group>"; };
 		A2000009 /* CharacterNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterNode.swift; sourceTree = "<group>"; };
 		A2000010 /* AgentMonitorScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentMonitorScene.swift; sourceTree = "<group>"; };
+		A2000011 /* CursorSessionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorSessionProvider.swift; sourceTree = "<group>"; };
 		A3000001 /* Glimpse.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Glimpse.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -56,8 +58,9 @@
 				A2000006 /* main.swift */,
 				A2000007 /* SessionMonitor.swift */,
 				A2000008 /* CharacterGenerator.swift */,
-			A2000009 /* CharacterNode.swift */,
-			A2000010 /* AgentMonitorScene.swift */,
+				A2000009 /* CharacterNode.swift */,
+				A2000010 /* AgentMonitorScene.swift */,
+				A2000011 /* CursorSessionProvider.swift */,
 			);
 			path = Glimpse;
 			sourceTree = "<group>";
@@ -139,8 +142,9 @@
 				A1000005 /* main.swift in Sources */,
 				A1000006 /* SessionMonitor.swift in Sources */,
 				A1000007 /* CharacterGenerator.swift in Sources */,
-			A1000008 /* CharacterNode.swift in Sources */,
-			A1000009 /* AgentMonitorScene.swift in Sources */,
+				A1000008 /* CharacterNode.swift in Sources */,
+				A1000009 /* AgentMonitorScene.swift in Sources */,
+				A1000010 /* CursorSessionProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -248,13 +252,15 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = L4P667F5UD;
 				INFOPLIST_FILE = Glimpse/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.glimpse.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.guillim.glimpse;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 			};
@@ -267,13 +273,15 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = L4P667F5UD;
 				INFOPLIST_FILE = Glimpse/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.glimpse.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.guillim.glimpse;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 			};
