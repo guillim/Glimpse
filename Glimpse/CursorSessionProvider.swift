@@ -230,6 +230,12 @@ final class CursorSessionProvider {
             return url.lastPathComponent
         }
 
+        // Fall back to workspace map lookup via workspaceId
+        if let wsId = json["workspaceId"] as? String,
+           let name = workspaceMap[wsId] {
+            return name
+        }
+
         return "Cursor"
     }
 
