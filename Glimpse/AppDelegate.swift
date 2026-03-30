@@ -6,6 +6,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var keyMonitor: Any?
     private var statusItem: NSStatusItem?
     private var currentSessions: [SessionMonitor.Session] = []
+    private var normalIcon: NSImage?
+    private var badgedIcon: NSImage?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -50,11 +52,41 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func makeIcon(badge: Bool) -> NSImage? {
+        guard let baseImage = NSImage(systemSymbolName: "photo.on.rectangle", accessibilityDescription: "Glimpse") else {
+            return nil
+        }
+
+        let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+        let configured = baseImage.withSymbolConfiguration(config) ?? baseImage
+
+        guard badge else { return configured }
+
+        let size = configured.size
+        let result = NSImage(size: size, flipped: false) { rect in
+            configured.draw(in: rect)
+            let dotSize: CGFloat = 5
+            let dotRect = NSRect(
+                x: size.width - dotSize - 0.5,
+                y: size.height - dotSize - 0.5,
+                width: dotSize,
+                height: dotSize
+            )
+            NSColor.systemOrange.setFill()
+            NSBezierPath(ovalIn: dotRect).fill()
+            return true
+        }
+        result.isTemplate = false
+        return result
+    }
+
     private func setupMenuBarItem() {
         if statusItem == nil {
             statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+            normalIcon = makeIcon(badge: false)
+            badgedIcon = makeIcon(badge: true)
             if let button = statusItem?.button {
-                button.image = NSImage(systemSymbolName: "photo.on.rectangle", accessibilityDescription: "Glimpse")
+                button.image = normalIcon
             }
         }
 
@@ -84,6 +116,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Exit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: ""))
         statusItem?.menu = menu
+
+        let anyAsking = currentSessions.contains { $0.activity == .asking }
+        statusItem?.button?.image = anyAsking ? badgedIcon : normalIcon
     }
 
     @objc private func menuItemClicked(_ sender: NSMenuItem) {
