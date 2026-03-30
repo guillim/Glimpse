@@ -53,18 +53,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func makeIcon(badge: Bool) -> NSImage? {
-        guard let baseImage = NSImage(systemSymbolName: "photo.on.rectangle", accessibilityDescription: "Glimpse") else {
+        guard let baseImage = NSImage(named: "MenuBarIcon") else {
             return nil
         }
+        baseImage.isTemplate = true
 
-        let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
-        let configured = baseImage.withSymbolConfiguration(config) ?? baseImage
+        guard badge else { return baseImage }
 
-        guard badge else { return configured }
-
-        let size = configured.size
+        let size = baseImage.size
         let result = NSImage(size: size, flipped: false) { rect in
-            configured.draw(in: rect)
+            baseImage.draw(in: rect)
             let dotSize: CGFloat = 5
             let dotRect = NSRect(
                 x: size.width - dotSize - 0.5,
