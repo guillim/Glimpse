@@ -14,10 +14,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupKeyboardShortcut()
         setupPowerNotifications()
         DispatchQueue.main.async {
-            self.desktopWindowController = DesktopWindowController()
-            self.desktopWindowController?.showWindow(nil)
+            let controller = DesktopWindowController()
+            self.desktopWindowController = controller
             self.setupMenuBarItem()
-            self.desktopWindowController?.agentScene?.onSessionsChanged = { [weak self] sessions in
+            controller.onSessionsChanged = { [weak self] sessions in
                 self?.currentSessions = sessions
                 self?.rebuildMenu()
             }
@@ -123,7 +123,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func menuItemClicked(_ sender: NSMenuItem) {
         guard let sessionID = sender.representedObject as? String else { return }
-        desktopWindowController?.agentScene?.activateAppForSession(sessionID)
+        desktopWindowController?.activateAppForSession(sessionID)
     }
 
     private func activityString(_ activity: SessionMonitor.Activity) -> String {
