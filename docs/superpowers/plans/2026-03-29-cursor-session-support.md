@@ -77,7 +77,7 @@ private static func classifyBashCommand(blocks: [[String: Any]]) -> Activity {
 
 Run:
 ```bash
-cd /Users/guillaumelancrenon/github/background && xcodebuild -scheme Glimpse -configuration Debug build 2>&1 | tail -5
+xcodebuild -scheme Glimpse -configuration Debug build 2>&1 | tail -5
 ```
 Expected: `** BUILD SUCCEEDED **`
 
@@ -386,7 +386,7 @@ final class CursorSessionProvider {
 
 Run:
 ```bash
-cd /Users/guillaumelancrenon/github/background && xcodebuild -scheme Glimpse -configuration Debug build 2>&1 | tail -5
+xcodebuild -scheme Glimpse -configuration Debug build 2>&1 | tail -5
 ```
 Expected: `** BUILD SUCCEEDED **`
 
@@ -428,7 +428,7 @@ sessions.append(contentsOf: cursorSessions)
 
 Run:
 ```bash
-cd /Users/guillaumelancrenon/github/background && xcodebuild -scheme Glimpse -configuration Debug build 2>&1 | tail -5
+xcodebuild -scheme Glimpse -configuration Debug build 2>&1 | tail -5
 ```
 Expected: `** BUILD SUCCEEDED **`
 
@@ -493,7 +493,7 @@ func activateAppForSession(_ sessionID: String) {
 
 Run:
 ```bash
-cd /Users/guillaumelancrenon/github/background && xcodebuild -scheme Glimpse -configuration Debug build 2>&1 | tail -5
+xcodebuild -scheme Glimpse -configuration Debug build 2>&1 | tail -5
 ```
 Expected: `** BUILD SUCCEEDED **`
 
@@ -514,7 +514,7 @@ git commit -m "feat: click-to-activate for Cursor sessions"
 
 Run:
 ```bash
-cd /Users/guillaumelancrenon/github/background && xcodebuild -scheme Glimpse -configuration Debug build 2>&1 | tail -5
+xcodebuild -scheme Glimpse -configuration Debug build 2>&1 | tail -5
 ```
 Expected: `** BUILD SUCCEEDED **`
 
@@ -546,7 +546,7 @@ label.text = "No agent sessions active — start one to see your agent!"
 
 Run:
 ```bash
-cd /Users/guillaumelancrenon/github/background && xcodebuild -scheme Glimpse -configuration Debug build 2>&1 | tail -5
+xcodebuild -scheme Glimpse -configuration Debug build 2>&1 | tail -5
 ```
 Expected: `** BUILD SUCCEEDED **`
 

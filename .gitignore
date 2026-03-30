@@ -8,6 +8,10 @@ node_modules/
 DerivedData/
 *.xcuserstate
 xcuserdata/
+Glimpse.xcconfig
 
 # Build
 build/
+
+# Superpowers (brainstorm artifacts with local paths)
+.superpowers/

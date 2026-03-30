@@ -1,0 +1,3 @@
+// Local Xcode configuration
+// Copy this file to Glimpse.xcconfig and fill in your Apple Developer Team ID.
+DEVELOPMENT_TEAM = YOUR_TEAM_ID_HERE
