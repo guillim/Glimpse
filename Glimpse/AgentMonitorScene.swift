@@ -5,7 +5,6 @@ import AppKit
 /// SpriteKit scene displaying characters for active Claude Code sessions.
 final class AgentMonitorScene: SKScene {
 
-    private let sessionMonitor = SessionMonitor()
     private var characterNodes: [String: CharacterNode] = [:]  // sessionID → node
     private var departingNodes: Set<String> = []  // sessions currently fading out
 
@@ -22,25 +21,12 @@ final class AgentMonitorScene: SKScene {
         return label
     }()
 
-    /// Called on the main thread with current sessions — used by AppDelegate for menu bar.
-    var onSessionsChanged: (([SessionMonitor.Session]) -> Void)?
-
     // MARK: - Scene Lifecycle
 
     override func didMove(to view: SKView) {
         backgroundColor = .clear
         addChild(emptyLabel)
         emptyLabel.position = CGPoint(x: size.width / 2, y: size.height / 2)
-
-        sessionMonitor.onUpdate = { [weak self] sessions in
-            self?.handleSessionUpdate(sessions)
-            self?.onSessionsChanged?(sessions)
-        }
-        sessionMonitor.start()
-    }
-
-    override func willMove(from view: SKView) {
-        sessionMonitor.stop()
     }
 
     override func didChangeSize(_ oldSize: CGSize) {
@@ -50,6 +36,11 @@ final class AgentMonitorScene: SKScene {
     }
 
     // MARK: - Session Updates
+
+    /// Push session data from an external SessionMonitor.
+    func updateSessions(_ sessions: [SessionMonitor.Session]) {
+        handleSessionUpdate(sessions)
+    }
 
     private func handleSessionUpdate(_ sessions: [SessionMonitor.Session]) {
         let activeIDs = Set(sessions.map(\.id))
