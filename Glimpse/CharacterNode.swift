@@ -18,11 +18,17 @@ final class CharacterNode: SKNode {
     private let dividerNode: SKShapeNode
     private let folderPrefixLabel: SKLabelNode
     private let projectLabel: SKLabelNode
+    private let workingOnPrefix: SKLabelNode
     private let topicLabel: SKLabelNode
+    private let statusPrefix: SKLabelNode
+    private let statusDetailLabel: SKLabelNode
     private let goodbyeLabel: SKLabelNode
 
     /// Track current status to avoid redundant updates.
     private(set) var currentActivity: SessionMonitor.Activity = .sleeping
+
+    /// Current question text when in .asking state.
+    private var currentQuestionText: String?
 
     /// Formatted idle duration text (e.g. "2min", "1h30m"), nil when not idle.
     private var idleDurationText: String?
@@ -56,7 +62,7 @@ final class CharacterNode: SKNode {
         cardBG.zPosition = -2
 
         // Sprite in upper portion of card
-        let spriteY = cardH * 0.15
+        let spriteY = cardH * 0.22
         bodySprite.position = CGPoint(x: 0, y: spriteY)
 
         // Status row: colored pill with glowing dot + uppercase text
@@ -133,17 +139,53 @@ final class CharacterNode: SKNode {
         folderPrefixLabel.position = CGPoint(x: -totalWidth / 2 + prefixWidth, y: projectY)
         projectLabel.position = CGPoint(x: -totalWidth / 2 + prefixWidth + 3, y: projectY)
 
-        // Topic label (below project label, up to 3 lines)
+        // "working on:" section
+        let sectionFontSize = max(size * 0.09, 7)
+        let contentFontSize = max(size * 0.10, 7.5)
+        let sectionPadding: CGFloat = 8
+        let sectionLeftX = -cardW * 0.5 + sectionPadding
+        let sectionMaxWidth = cardW - sectionPadding * 2
+
+        let workingOnY = projectY - projectFontSize - 3
+        workingOnPrefix = SKLabelNode(fontNamed: "Menlo")
+        workingOnPrefix.text = "working on:"
+        workingOnPrefix.fontSize = sectionFontSize
+        workingOnPrefix.fontColor = .init(red: 0.35, green: 0.35, blue: 0.42, alpha: 1)
+        workingOnPrefix.position = CGPoint(x: sectionLeftX, y: workingOnY)
+        workingOnPrefix.verticalAlignmentMode = .top
+        workingOnPrefix.horizontalAlignmentMode = .left
+
         topicLabel = SKLabelNode(fontNamed: "Menlo-Bold")
         topicLabel.text = ""
-        topicLabel.fontSize = max(size * 0.11, 8)
+        topicLabel.fontSize = contentFontSize
         topicLabel.fontColor = .init(red: 0.7, green: 0.7, blue: 0.78, alpha: 1)
-        topicLabel.numberOfLines = 3
-        topicLabel.preferredMaxLayoutWidth = cardW - 20
-        let topicY = projectY - projectFontSize - 4
-        topicLabel.position = CGPoint(x: 0, y: topicY)
+        topicLabel.numberOfLines = 2
+        topicLabel.preferredMaxLayoutWidth = sectionMaxWidth
+        let topicY = workingOnY - sectionFontSize - 1
+        topicLabel.position = CGPoint(x: sectionLeftX, y: topicY)
         topicLabel.verticalAlignmentMode = .top
-        topicLabel.horizontalAlignmentMode = .center
+        topicLabel.horizontalAlignmentMode = .left
+
+        // "status:" section
+        let statusSectionY = topicY - contentFontSize * 2.2 - 2
+        statusPrefix = SKLabelNode(fontNamed: "Menlo")
+        statusPrefix.text = "status:"
+        statusPrefix.fontSize = sectionFontSize
+        statusPrefix.fontColor = .init(red: 0.35, green: 0.35, blue: 0.42, alpha: 1)
+        statusPrefix.position = CGPoint(x: sectionLeftX, y: statusSectionY)
+        statusPrefix.verticalAlignmentMode = .top
+        statusPrefix.horizontalAlignmentMode = .left
+
+        statusDetailLabel = SKLabelNode(fontNamed: "Menlo-Bold")
+        statusDetailLabel.text = "idle"
+        statusDetailLabel.fontSize = contentFontSize
+        statusDetailLabel.fontColor = .init(red: 0.5, green: 0.5, blue: 0.56, alpha: 1)
+        statusDetailLabel.numberOfLines = 2
+        statusDetailLabel.preferredMaxLayoutWidth = sectionMaxWidth
+        let statusDetailY = statusSectionY - sectionFontSize - 1
+        statusDetailLabel.position = CGPoint(x: sectionLeftX, y: statusDetailY)
+        statusDetailLabel.verticalAlignmentMode = .top
+        statusDetailLabel.horizontalAlignmentMode = .left
 
         // Goodbye label (hidden, shown only during departure animation)
         goodbyeLabel = SKLabelNode(fontNamed: "Menlo-Bold")
@@ -166,7 +208,10 @@ final class CharacterNode: SKNode {
         addChild(dividerNode)
         addChild(folderPrefixLabel)
         addChild(projectLabel)
+        addChild(workingOnPrefix)
         addChild(topicLabel)
+        addChild(statusPrefix)
+        addChild(statusDetailLabel)
         addChild(goodbyeLabel)
     }
 
@@ -265,10 +310,11 @@ final class CharacterNode: SKNode {
         }
     }
 
-    func updateActivity(_ activity: SessionMonitor.Activity) {
-        guard activity != currentActivity else { return }
+    func updateActivity(_ activity: SessionMonitor.Activity, questionText: String? = nil) {
+        guard activity != currentActivity || (activity == .asking && questionText != currentQuestionText) else { return }
         let previousActivity = currentActivity
         currentActivity = activity
+        currentQuestionText = questionText
 
         let newWord: String
         switch activity {
@@ -286,6 +332,26 @@ final class CharacterNode: SKNode {
         case .done:       newWord = "DONE"
         case .sleeping:   newWord = "IDLE"
         }
+
+        // Update status detail section
+        let statusText: String
+        let statusColor: NSColor
+        if activity == .asking, let q = questionText, !q.isEmpty {
+            let trimmed = q.trimmingCharacters(in: .whitespacesAndNewlines)
+            statusText = trimmed.count > 45 ? String(trimmed.prefix(44)) + "…" : trimmed
+            statusColor = NSColor(red: 1.0, green: 0.69, blue: 0.38, alpha: 1)
+        } else {
+            statusText = Self.statusDescription(activity)
+            statusColor = NSColor(red: 0.5, green: 0.5, blue: 0.56, alpha: 1)
+        }
+        statusDetailLabel.run(.sequence([
+            .fadeOut(withDuration: 0.12),
+            .run { [weak self] in
+                self?.statusDetailLabel.text = statusText
+                self?.statusDetailLabel.fontColor = statusColor
+            },
+            .fadeIn(withDuration: 0.12)
+        ]))
 
         // Show duration outside the pill for standby states
         durationLabel.text = Self.showsDuration(activity) ? (idleDurationText ?? "") : ""
@@ -342,7 +408,11 @@ final class CharacterNode: SKNode {
     }
 
     func updateTopics(_ topics: [String]) {
-        let joined = topics.isEmpty ? "nothing" : topics.joined(separator: "\n")
+        // Show only the last 2 topics, truncated to fit
+        let display = topics.suffix(2).map { topic -> String in
+            topic.count > 30 ? String(topic.prefix(29)) + "…" : topic
+        }
+        let joined = display.isEmpty ? "nothing" : display.joined(separator: "\n")
         guard joined != topicLabel.text else { return }
         topicLabel.text = joined
     }
@@ -352,6 +422,25 @@ final class CharacterNode: SKNode {
         switch activity {
         case .sleeping, .asking, .done: return true
         default: return false
+        }
+    }
+
+    /// Human-readable status description for the status detail section.
+    private static func statusDescription(_ activity: SessionMonitor.Activity) -> String {
+        switch activity {
+        case .reading:    return "reading files"
+        case .writing:    return "editing files"
+        case .running:    return "running command"
+        case .testing:    return "running tests"
+        case .building:   return "building project"
+        case .committing: return "git operation"
+        case .thinking:   return "thinking…"
+        case .processing: return "processing input…"
+        case .spawning:   return "launching subagent"
+        case .searching:  return "searching the web"
+        case .asking:     return "waiting for input"
+        case .done:       return "task complete"
+        case .sleeping:   return "idle"
         }
     }
 
@@ -505,7 +594,10 @@ final class CharacterNode: SKNode {
         dividerNode.setScale(s)
         folderPrefixLabel.setScale(s)
         projectLabel.setScale(s)
+        workingOnPrefix.setScale(s)
         topicLabel.setScale(s)
+        statusPrefix.setScale(s)
+        statusDetailLabel.setScale(s)
         goodbyeLabel.setScale(s)
         glowNode?.setScale(s)
     }

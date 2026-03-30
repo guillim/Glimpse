@@ -54,7 +54,7 @@ final class AgentMonitorScene: SKScene {
         for session in sessions {
             guard !departingNodes.contains(session.id) else { continue }
             if let existing = characterNodes[session.id] {
-                existing.updateActivity(session.activity)
+                existing.updateActivity(session.activity, questionText: session.questionText)
                 existing.updateTopics(session.topics)
                 existing.updateIdleDuration(session.idleDuration)
             } else {
@@ -63,7 +63,7 @@ final class AgentMonitorScene: SKScene {
                     projectName: session.projectName,
                     size: charSize
                 )
-                node.updateActivity(session.activity)
+                node.updateActivity(session.activity, questionText: session.questionText)
                 node.updateTopics(session.topics)
                 node.updateIdleDuration(session.idleDuration)
                 node.animateAppear()

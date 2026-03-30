@@ -103,7 +103,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let activityLabel = activityString(session.activity)
                 let isAsking = session.activity == .asking
 
-                let title = "\(session.projectName)  \(activityLabel)\(isAsking ? "  🔔" : "")"
+                let askingSuffix: String
+                if isAsking, let q = session.questionText, !q.isEmpty {
+                    let trimmed = q.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let truncated = trimmed.count > 50 ? String(trimmed.prefix(49)) + "…" : trimmed
+                    askingSuffix = "  🔔 \(truncated)"
+                } else if isAsking {
+                    askingSuffix = "  🔔"
+                } else {
+                    askingSuffix = ""
+                }
+
+                let title = "\(session.projectName)  \(activityLabel)\(askingSuffix)"
                 let item = NSMenuItem(title: title, action: #selector(menuItemClicked(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = session.id

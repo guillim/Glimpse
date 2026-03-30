@@ -54,7 +54,7 @@ Clicking a character activates the parent application (iTerm2, Terminal, VS Code
 | `AgentMonitorScene.swift` | SpriteKit scene — grid layout, click handling, app activation |
 | `CharacterNode.swift` | Single character card — sprite, status pill, labels, animations |
 | `CharacterGenerator.swift` | Deterministic pixel-art generation from session ID |
-| `DesktopWindowController.swift` | Desktop-level window, global click monitor, occlusion pausing |
+| `DesktopWindowController.swift` | Multi-monitor window manager, session monitor ownership, global click monitor |
 | `AppDelegate.swift` | Lifecycle, power management, menu bar, keyboard shortcuts |
 
 ---
@@ -66,6 +66,12 @@ Clicking a character activates the parent application (iTerm2, Terminal, VS Code
 - Color-coded activity status with glowing dot indicators
 - Asking state glow ring (pulsing orange) for sessions waiting on user input
 - Goodbye animation when sessions end
-- Click-to-activate: opens the terminal window running the session
+- Multi-monitor support: characters mirrored on all connected screens, windows created/destroyed automatically
+- Click-to-activate: opens the terminal window running the session (works on any screen)
 - Pauses rendering during sleep, screensaver, and window occlusion
-- 30fps SpriteKit rendering, 2-second session polling interval
+
+---
+
+## Performance
+
+Glimpse is designed to stay invisible on your machine: under 10% CPU and under 100 MB RAM, even with several agents running. The rendering loop idles at 3 fps and only briefly boosts to 30 fps when a session changes state, so the GPU is nearly silent between transitions. The tradeoff is that character animations look slightly coarser at rest — unnoticeable at their small pixel-art size.

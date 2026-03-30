@@ -31,9 +31,11 @@ final class SessionMonitor {
         let lastModified: Date
         /// How long (in seconds) the session has been idle (0 when actively producing output).
         let idleDuration: TimeInterval
+        /// The question text when activity is .asking (nil otherwise).
+        let questionText: String?
 
         static func == (lhs: Session, rhs: Session) -> Bool {
-            lhs.id == rhs.id && lhs.activity == rhs.activity && lhs.topics == rhs.topics
+            lhs.id == rhs.id && lhs.activity == rhs.activity && lhs.topics == rhs.topics && lhs.questionText == rhs.questionText
         }
     }
 
@@ -138,7 +140,7 @@ final class SessionMonitor {
                     // Carry forward previous topics when the new scan found none
                     // (assistant output can push user messages out of the tail window)
                     if fresh.topics.isEmpty, let cached = scanCache[sessionID], !cached.result.topics.isEmpty {
-                        fresh = ScanResult(activity: fresh.activity, topics: cached.result.topics)
+                        fresh = ScanResult(activity: fresh.activity, topics: cached.result.topics, questionText: fresh.questionText)
                     }
                     result = fresh
                     scanCache[sessionID] = (fileSize: fileSize, result: result)
@@ -150,7 +152,8 @@ final class SessionMonitor {
                     activity: result.activity,
                     topics: result.topics,
                     lastModified: modified,
-                    idleDuration: now.timeIntervalSince(modified)
+                    idleDuration: now.timeIntervalSince(modified),
+                    questionText: result.questionText
                 ))
             }
         }
@@ -321,11 +324,12 @@ final class SessionMonitor {
     struct ScanResult {
         let activity: Activity
         let topics: [String]
+        let questionText: String?
     }
 
     /// Read tail of a JSONL file, classify activity and extract topics.
     static func classifyActivity(fileURL: URL, lastModified: Date, now: Date) -> ScanResult {
-        let empty = ScanResult(activity: .sleeping, topics: [])
+        let empty = ScanResult(activity: .sleeping, topics: [], questionText: nil)
 
         guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return empty }
         defer { try? handle.close() }
@@ -350,6 +354,7 @@ final class SessionMonitor {
         let topics = extractTopics(handle: handle, fileSize: fileSize)
 
         var activity: Activity = .sleeping
+        var questionText: String?
 
         var sawSessionReset = false
         // Track whether we've seen a tool_result after the most recent assistant tool_use.
@@ -406,14 +411,18 @@ final class SessionMonitor {
                 if let blocks = message["content"] as? [[String: Any]] {
                     for block in blocks {
                         if block["type"] as? String == "tool_use",
-                           block["name"] as? String == "AskUserQuestion" {
+                           block["name"] as? String == "AskUserQuestion",
+                           let input = block["input"] as? [String: Any],
+                           let q = input["question"] as? String {
                             isAsking = true
+                            questionText = q
                             break
                         }
                         if block["type"] as? String == "text",
                            let text = block["text"] as? String,
                            text.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("?") {
                             isAsking = true
+                            questionText = text
                         }
                     }
                 }
@@ -466,7 +475,7 @@ final class SessionMonitor {
             }
         }
 
-        return ScanResult(activity: activity, topics: topics.reversed())
+        return ScanResult(activity: activity, topics: topics.reversed(), questionText: questionText)
     }
 
     // MARK: - Topic Extraction (wide scan)

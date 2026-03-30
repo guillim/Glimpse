@@ -1,6 +1,33 @@
 import AppKit
 import SpriteKit
 
+/// SKView subclass that is click-through everywhere except over character nodes.
+/// Returning `self` from `hitTest` consumes the click (prevents "show desktop");
+/// returning `nil` lets it pass through normally.
+private final class CharacterHitSKView: SKView {
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let scene = scene as? AgentMonitorScene else { return nil }
+        let local = convert(point, from: superview)
+        let scenePoint = scene.convertPoint(fromView: local)
+        return scene.characterNode(at: scenePoint) != nil ? self : nil
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let scene = scene as? AgentMonitorScene else {
+            print("[CharacterHitSKView] mouseDown: no AgentMonitorScene")
+            return
+        }
+        let viewPoint = convert(event.locationInWindow, from: nil)
+        let scenePoint = scene.convertPoint(fromView: viewPoint)
+        let hit = scene.characterNode(at: scenePoint)
+        print("[CharacterHitSKView] mouseDown: view=\(viewPoint) scene=\(scenePoint) hit=\(hit?.sessionID ?? "nil")")
+        if let node = hit {
+            scene.activateAppForSession(node.sessionID)
+        }
+    }
+}
+
 /// Manages one borderless desktop-level window per connected screen,
 /// each hosting a mirrored SpriteKit scene of agent characters.
 final class DesktopWindowController {
@@ -17,23 +44,28 @@ final class DesktopWindowController {
 
     private let sessionMonitor = SessionMonitor()
     private var latestSessions: [SessionMonitor.Session] = []
-    private var clickMonitor: Any?
     private var screenObserver: NSObjectProtocol?
+    private var cursorTimer: Timer?
+
+    /// Timer that drops frame rate back to baseline after a boost.
+    private var fpsDropTimer: Timer?
+    private static let baselineFPS = 3
+    private static let boostFPS = 30
+    /// How long to hold the boosted frame rate after a change (covers longest transition).
+    private static let boostDuration: TimeInterval = 2.0
 
     /// Called on the main thread with current sessions — used by AppDelegate for menu bar.
     var onSessionsChanged: (([SessionMonitor.Session]) -> Void)?
 
     init() {
-        setupClickMonitor()
         observeScreenChanges()
         syncScreens()
         startMonitoring()
+        startCursorTracking()
     }
 
     deinit {
-        if let monitor = clickMonitor {
-            NSEvent.removeMonitor(monitor)
-        }
+        cursorTimer?.invalidate()
         if let observer = screenObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -48,6 +80,9 @@ final class DesktopWindowController {
     private func startMonitoring() {
         sessionMonitor.onUpdate = { [weak self] sessions in
             guard let self else { return }
+            if sessions != self.latestSessions {
+                self.boostFrameRate()
+            }
             self.latestSessions = sessions
             for entry in self.entries.values {
                 entry.scene.updateSessions(sessions)
@@ -55,6 +90,22 @@ final class DesktopWindowController {
             self.onSessionsChanged?(sessions)
         }
         sessionMonitor.start()
+    }
+
+    // MARK: - Adaptive Frame Rate
+
+    /// Temporarily boost all SKViews to 30fps for smooth animations, then drop back.
+    private func boostFrameRate() {
+        fpsDropTimer?.invalidate()
+        for entry in entries.values {
+            entry.skView.preferredFramesPerSecond = Self.boostFPS
+        }
+        fpsDropTimer = Timer.scheduledTimer(withTimeInterval: Self.boostDuration, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            for entry in self.entries.values {
+                entry.skView.preferredFramesPerSecond = Self.baselineFPS
+            }
+        }
     }
 
     // MARK: - Screen Sync
@@ -120,10 +171,10 @@ final class DesktopWindowController {
         win.setFrame(frame, display: false)
         win.orderFrontRegardless()
 
-        let sv = SKView(frame: CGRect(origin: .zero, size: frame.size))
+        let sv = CharacterHitSKView(frame: CGRect(origin: .zero, size: frame.size))
         sv.autoresizingMask = [.width, .height]
         sv.allowsTransparency = true
-        sv.preferredFramesPerSecond = 30
+        sv.preferredFramesPerSecond = Self.baselineFPS
         win.contentView?.addSubview(sv)
 
         let scene = AgentMonitorScene(size: frame.size)
@@ -140,26 +191,48 @@ final class DesktopWindowController {
         return screen.deviceDescription[key] as? CGDirectDisplayID ?? 0
     }
 
-    // MARK: - Click Monitor
+    // MARK: - Cursor Tracking
 
-    private func setupClickMonitor() {
-        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            self?.handleGlobalClick(event)
+    /// Polls cursor position to toggle `ignoresMouseEvents` per-window.
+    /// When the cursor is over a character, the window accepts clicks so
+    /// macOS "click wallpaper to show desktop" is suppressed.
+    private func startCursorTracking() {
+        cursorTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) { [weak self] _ in
+            self?.updateMousePassthrough()
         }
     }
 
-    private func handleGlobalClick(_ event: NSEvent) {
-        let screenPoint = event.locationInWindow
+    private func updateMousePassthrough() {
+        let mouseLocation = NSEvent.mouseLocation
 
         for entry in entries.values {
-            let windowPoint = entry.window.convertPoint(fromScreen: screenPoint)
+            let windowPoint = entry.window.convertPoint(fromScreen: mouseLocation)
             let viewPoint = entry.skView.convert(windowPoint, from: nil)
             let scenePoint = entry.scene.convertPoint(fromView: viewPoint)
+            let hit = entry.scene.characterNode(at: scenePoint)
 
-            if let node = entry.scene.characterNode(at: scenePoint) {
-                entry.scene.activateAppForSession(node.sessionID)
+            if hit != nil {
+                let wasIgnoring = entry.window.ignoresMouseEvents
+                entry.window.ignoresMouseEvents = false
+                if wasIgnoring {
+                    print("[Cursor] OVER character at screen=\(mouseLocation) scene=\(scenePoint) — accepting clicks")
+                }
+                // Only one window owns the cursor — keep others click-through.
+                for other in entries.values where other.window !== entry.window {
+                    other.window.ignoresMouseEvents = true
+                }
                 return
             }
+        }
+
+        // Cursor not over any character — all windows click-through.
+        var wasAccepting = false
+        for entry in entries.values {
+            if !entry.window.ignoresMouseEvents { wasAccepting = true }
+            entry.window.ignoresMouseEvents = true
+        }
+        if wasAccepting {
+            print("[Cursor] LEFT character area — back to click-through")
         }
     }
 
