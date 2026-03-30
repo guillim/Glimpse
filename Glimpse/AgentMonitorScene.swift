@@ -22,6 +22,9 @@ final class AgentMonitorScene: SKScene {
         return label
     }()
 
+    /// Called on the main thread with current sessions — used by AppDelegate for menu bar.
+    var onSessionsChanged: (([SessionMonitor.Session]) -> Void)?
+
     // MARK: - Scene Lifecycle
 
     override func didMove(to view: SKView) {
@@ -31,6 +34,7 @@ final class AgentMonitorScene: SKScene {
 
         sessionMonitor.onUpdate = { [weak self] sessions in
             self?.handleSessionUpdate(sessions)
+            self?.onSessionsChanged?(sessions)
         }
         sessionMonitor.start()
     }
