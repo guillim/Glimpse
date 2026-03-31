@@ -6,6 +6,8 @@ Click a character to jump to its terminal window.
 
 No subscription. No external services. All processing happens on-device.
 
+![Glimpse screenshot — four pixel-art characters on the desktop](docs/images/screenshot.png)
+
 ---
 
 ## Requirements
