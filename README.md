@@ -25,7 +25,7 @@ open Glimpse.xcodeproj
 
 Select **My Mac** as the run destination and press **Run** (Cmd+R).
 
-The app runs as a background process with no Dock icon. A menu bar icon lets you quit.
+The app runs as a background process with no Dock icon. A menu bar icon shows active sessions and lets you quit.
 
 | Shortcut | Action |
 |----------|--------|
@@ -40,9 +40,9 @@ Glimpse scans `~/.claude/` for active session logs and renders a character for e
 - **Live activity** — reading, writing, running, thinking, searching, spawning, testing, building, committing
 - **Idle states** — asking (waiting for input), done, sleeping — with duration timers
 - **Project name** — which directory the session is working in
-- **Topics** — extracted from recent user messages
+- **Keyword summary** — a short title extracted from the most recent user message using on-device NLP
 
-Clicking a character activates the parent application (iTerm2, Terminal, VS Code, etc.) and selects the correct tab via AppleScript + tty matching.
+Clicking a character activates the parent application (iTerm2, Terminal, Cursor, etc.) and selects the correct tab via AppleScript + tty matching.
 
 ---
 
@@ -50,7 +50,8 @@ Clicking a character activates the parent application (iTerm2, Terminal, VS Code
 
 | File | Role |
 |------|------|
-| `SessionMonitor.swift` | Polls `~/.claude/` JSONL logs, classifies activity, extracts topics |
+| `SessionMonitor.swift` | Polls `~/.claude/` JSONL logs, classifies activity, extracts keyword summaries via NLTagger |
+| `CursorSessionProvider.swift` | Discovers active Cursor IDE sessions via LSP socket scanning |
 | `AgentMonitorScene.swift` | SpriteKit scene — grid layout, click handling, app activation |
 | `CharacterNode.swift` | Single character card — sprite, status pill, labels, animations |
 | `CharacterGenerator.swift` | Deterministic pixel-art generation from session ID |
@@ -67,7 +68,9 @@ Clicking a character activates the parent application (iTerm2, Terminal, VS Code
 - Asking state glow ring (pulsing orange) for sessions waiting on user input
 - Goodbye animation when sessions end
 - Multi-monitor support: characters mirrored on all connected screens, windows created/destroyed automatically
-- Click-to-activate: opens the terminal window running the session (works on any screen)
+- Cursor IDE session support
+- Click-to-activate: opens the terminal window or IDE running the session (works on any screen)
+- Menu bar dropdown listing all active sessions with keyword summaries
 - Pauses rendering during sleep, screensaver, and window occlusion
 
 ---
