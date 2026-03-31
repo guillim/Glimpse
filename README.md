@@ -18,8 +18,8 @@ No subscription. No external services. All processing happens on-device.
 ## Getting started
 
 ```bash
-git clone https://github.com/yourname/glimpse.git
-cd glimpse
+git clone https://github.com/guillim/Glimpse.git
+cd Glimpse
 open Glimpse.xcodeproj
 ```
 
@@ -78,3 +78,11 @@ Clicking a character activates the parent application (iTerm2, Terminal, Cursor,
 ## Performance
 
 Glimpse is designed to stay invisible on your machine: under 10% CPU and under 100 MB RAM, even with several agents running. The rendering loop idles at 3 fps and only briefly boosts to 30 fps when a session changes state, so the GPU is nearly silent between transitions. The tradeoff is that character animations look slightly coarser at rest — unnoticeable at their small pixel-art size.
+
+---
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE)
+
+You can freely use, modify, and share Glimpse for personal, educational, or non-commercial purposes. Commercial use — including use within a company or as part of a paid product — requires a separate license. Contact the author to discuss commercial terms.
