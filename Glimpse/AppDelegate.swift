@@ -100,21 +100,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(noAgents)
         } else {
             for session in currentSessions {
-                let activityLabel = activityString(session.activity)
                 let isAsking = session.activity == .asking
 
-                let askingSuffix: String
-                if isAsking, let q = session.questionText, !q.isEmpty {
+                let detail: String
+                if isAsking, let q = session.lastAssistantText, !q.isEmpty {
                     let trimmed = q.trimmingCharacters(in: .whitespacesAndNewlines)
                     let truncated = trimmed.count > 50 ? String(trimmed.prefix(49)) + "…" : trimmed
-                    askingSuffix = "  🔔 \(truncated)"
+                    detail = " — 🔔 \(truncated)"
                 } else if isAsking {
-                    askingSuffix = "  🔔"
+                    detail = " — 🔔"
                 } else {
-                    askingSuffix = ""
+                    detail = session.summary.isEmpty ? "" : " — \(session.summary)"
                 }
 
-                let title = "\(session.projectName)  \(activityLabel)\(askingSuffix)"
+                let title = "\(session.projectName)\(detail)"
                 let item = NSMenuItem(title: title, action: #selector(menuItemClicked(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = session.id
@@ -133,24 +132,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func menuItemClicked(_ sender: NSMenuItem) {
         guard let sessionID = sender.representedObject as? String else { return }
         desktopWindowController?.activateAppForSession(sessionID)
-    }
-
-    private func activityString(_ activity: SessionMonitor.Activity) -> String {
-        switch activity {
-        case .reading:    return "reading"
-        case .writing:    return "writing"
-        case .running:    return "running"
-        case .testing:    return "testing"
-        case .building:   return "building"
-        case .committing: return "committing"
-        case .thinking:   return "thinking"
-        case .processing: return "processing"
-        case .spawning:   return "spawning"
-        case .searching:  return "searching"
-        case .asking:     return "asking"
-        case .done:       return "done"
-        case .sleeping:   return "idle"
-        }
     }
 
     private func setupKeyboardShortcut() {

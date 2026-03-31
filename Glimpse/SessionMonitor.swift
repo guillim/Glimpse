@@ -1,5 +1,6 @@
 // Glimpse/SessionMonitor.swift
 import Foundation
+import NaturalLanguage
 
 /// Monitors active Claude Code sessions by scanning ~/.claude/ JSONL log files.
 /// Polls every 2 seconds and notifies via callback on session changes.
@@ -28,14 +29,15 @@ final class SessionMonitor {
         let projectName: String   // Extracted from parent directory name
         let activity: Activity
         let topics: [String]      // Last up-to-3 user input topics (oldest first)
+        let summary: String       // NLTagger keyword summary of most recent user input
         let lastModified: Date
         /// How long (in seconds) the session has been idle (0 when actively producing output).
         let idleDuration: TimeInterval
         /// The question text when activity is .asking (nil otherwise).
-        let questionText: String?
+        let lastAssistantText: String?
 
         static func == (lhs: Session, rhs: Session) -> Bool {
-            lhs.id == rhs.id && lhs.activity == rhs.activity && lhs.topics == rhs.topics && lhs.questionText == rhs.questionText
+            lhs.id == rhs.id && lhs.activity == rhs.activity && lhs.topics == rhs.topics && lhs.summary == rhs.summary && lhs.lastAssistantText == rhs.lastAssistantText
         }
     }
 
@@ -137,10 +139,14 @@ final class SessionMonitor {
                     result = cached.result
                 } else {
                     var fresh = Self.classifyActivity(fileURL: fileURL, lastModified: modified, now: now)
-                    // Carry forward previous topics when the new scan found none
+                    // Carry forward previous topics/summary when the new scan found none
                     // (assistant output can push user messages out of the tail window)
-                    if fresh.topics.isEmpty, let cached = scanCache[sessionID], !cached.result.topics.isEmpty {
-                        fresh = ScanResult(activity: fresh.activity, topics: cached.result.topics, questionText: fresh.questionText)
+                    if let cached = scanCache[sessionID] {
+                        let topics = fresh.topics.isEmpty ? cached.result.topics : fresh.topics
+                        let summary = fresh.summary.isEmpty ? cached.result.summary : fresh.summary
+                        if topics != fresh.topics || summary != fresh.summary {
+                            fresh = ScanResult(activity: fresh.activity, topics: topics, summary: summary, lastAssistantText: fresh.lastAssistantText)
+                        }
                     }
                     result = fresh
                     scanCache[sessionID] = (fileSize: fileSize, result: result)
@@ -151,9 +157,10 @@ final class SessionMonitor {
                     projectName: projectName,
                     activity: result.activity,
                     topics: result.topics,
+                    summary: result.summary,
                     lastModified: modified,
                     idleDuration: now.timeIntervalSince(modified),
-                    questionText: result.questionText
+                    lastAssistantText: result.lastAssistantText
                 ))
             }
         }
@@ -189,7 +196,10 @@ final class SessionMonitor {
     private static let stopWords: Set<String> = [
         "the", "a", "an", "in", "to", "for", "from", "with",
         "on", "at", "of", "by", "is", "are", "was", "it", "that", "this",
-        "me", "my", "and", "or", "but", "not", "just", "also", "some", "all"
+        "me", "my", "and", "or", "but", "not", "just", "also", "some", "all",
+        "i", "you", "we", "he", "she", "they", "your", "our", "their",
+        "its", "do", "does", "did", "have", "has", "had", "be", "been",
+        "so", "if", "when", "then", "now", "how", "what", "which", "there"
     ]
 
     /// Action verbs to anchor topic extraction.
@@ -206,6 +216,29 @@ final class SessionMonitor {
         "monitor", "track", "watch", "ask"
     ]
 
+    /// Characters to strip from leading/trailing edges of words.
+    private static let edgePunctuation = CharacterSet.alphanumerics.inverted
+
+    /// Strip leading and trailing punctuation from a word, preserving internal chars (e.g. hyphens).
+    private static func trimPunctuation(_ word: String) -> String {
+        var s = word
+        while let first = s.unicodeScalars.first, edgePunctuation.contains(first) {
+            s = String(s.dropFirst())
+        }
+        while let last = s.unicodeScalars.last, edgePunctuation.contains(last) {
+            s = String(s.dropLast())
+        }
+        return s
+    }
+
+    /// Split a line into cleaned, lowercased words with edge punctuation stripped.
+    private static func cleanWords(_ line: String) -> [String] {
+        line.lowercased()
+            .components(separatedBy: .whitespaces)
+            .map { trimPunctuation($0) }
+            .filter { !$0.isEmpty }
+    }
+
     /// Extract a short topic from the user's message using keyword-based extraction.
     /// Scans all lines for the best action-verb match, falls back to meaningful words.
     static func extractTopic(from message: String) -> String {
@@ -220,9 +253,7 @@ final class SessionMonitor {
         for line in messageLines {
             let stripped = stripNoise(line)
             guard !stripped.isEmpty else { continue }
-            let words = stripped.lowercased()
-                .components(separatedBy: .whitespaces)
-                .filter { !$0.isEmpty }
+            let words = cleanWords(stripped)
             if let result = extractVerbPhrase(from: words) {
                 return capTopic(result)
             }
@@ -232,9 +263,7 @@ final class SessionMonitor {
         for line in messageLines {
             let stripped = stripNoise(line)
             guard !stripped.isEmpty else { continue }
-            let words = stripped.lowercased()
-                .components(separatedBy: .whitespaces)
-                .filter { !$0.isEmpty }
+            let words = cleanWords(stripped)
             let meaningful = words.filter { !stopWords.contains($0) }.prefix(4)
             if !meaningful.isEmpty {
                 return capTopic(meaningful.joined(separator: " "))
@@ -242,6 +271,24 @@ final class SessionMonitor {
         }
 
         return ""
+    }
+
+    /// Extract a short keyword summary from text using NLTagger lexical classification.
+    /// Returns nouns, verbs, and adjectives (3+ chars) joined as a lowercase phrase.
+    private static func summarize(_ text: String, maxWords: Int = 5) -> String {
+        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        tagger.string = text
+        var keywords: [String] = []
+        tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word, scheme: .lexicalClass) { tag, range in
+            if let tag, [.noun, .verb, .adjective].contains(tag) {
+                let word = String(text[range]).lowercased()
+                if word.count >= 3, !keywords.contains(word) {
+                    keywords.append(word)
+                }
+            }
+            return keywords.count < maxWords
+        }
+        return keywords.joined(separator: " ")
     }
 
     /// Strip prompt characters and filler prefixes from a line.
@@ -324,12 +371,13 @@ final class SessionMonitor {
     struct ScanResult {
         let activity: Activity
         let topics: [String]
-        let questionText: String?
+        let summary: String
+        let lastAssistantText: String?
     }
 
     /// Read tail of a JSONL file, classify activity and extract topics.
     static func classifyActivity(fileURL: URL, lastModified: Date, now: Date) -> ScanResult {
-        let empty = ScanResult(activity: .sleeping, topics: [], questionText: nil)
+        let empty = ScanResult(activity: .sleeping, topics: [], summary: "", lastAssistantText: nil)
 
         guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return empty }
         defer { try? handle.close() }
@@ -350,11 +398,11 @@ final class SessionMonitor {
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
             .suffix(100)
 
-        // Topic extraction: wider tail (512KB) — user messages are sparse among tool output.
-        let topics = extractTopics(handle: handle, fileSize: fileSize)
+        // Topic + summary extraction: wider tail (512KB) — user messages are sparse among tool output.
+        let extracted = extractTopics(handle: handle, fileSize: fileSize)
 
         var activity: Activity = .sleeping
-        var questionText: String?
+        var lastAssistantText: String?
 
         var sawSessionReset = false
         // Track whether we've seen a tool_result after the most recent assistant tool_use.
@@ -415,14 +463,16 @@ final class SessionMonitor {
                            let input = block["input"] as? [String: Any],
                            let q = input["question"] as? String {
                             isAsking = true
-                            questionText = q
+                            lastAssistantText = q
                             break
                         }
                         if block["type"] as? String == "text",
-                           let text = block["text"] as? String,
-                           text.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("?") {
-                            isAsking = true
-                            questionText = text
+                           let text = block["text"] as? String {
+                            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if trimmed.hasSuffix("?") {
+                                isAsking = true
+                            }
+                            lastAssistantText = text
                         }
                     }
                 }
@@ -438,6 +488,12 @@ final class SessionMonitor {
                 let toolNames = blocks.compactMap { block -> String? in
                     guard block["type"] as? String == "tool_use" else { return nil }
                     return block["name"] as? String
+                }
+
+                // Capture the last text block from this assistant message
+                if let lastText = blocks.last(where: { $0["type"] as? String == "text" })?["text"] as? String,
+                   !lastText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    lastAssistantText = lastText
                 }
 
                 if !toolNames.isEmpty {
@@ -475,30 +531,29 @@ final class SessionMonitor {
             }
         }
 
-        return ScanResult(activity: activity, topics: topics.reversed(), questionText: questionText)
+        return ScanResult(activity: activity, topics: extracted.topics.reversed(), summary: extracted.summary, lastAssistantText: lastAssistantText)
     }
 
     // MARK: - Topic Extraction (wide scan)
 
-    /// Extract up to 3 topics from user messages, scanning a wider tail (512KB).
+    /// Extract up to 3 topics and a keyword summary from user messages, scanning a wider tail (512KB).
     /// Only parses lines that look like user messages (fast string pre-filter).
-    private static func extractTopics(handle: FileHandle, fileSize: UInt64) -> [String] {
+    private static func extractTopics(handle: FileHandle, fileSize: UInt64) -> (topics: [String], summary: String) {
         let topicTailBytes = 512 * 1024
         let topicOffset = fileSize > UInt64(topicTailBytes) ? fileSize - UInt64(topicTailBytes) : 0
         handle.seek(toFileOffset: topicOffset)
         let topicData = handle.availableData
-        guard let topicContent = String(data: topicData, encoding: .utf8) else { return [] }
+        guard let topicContent = String(data: topicData, encoding: .utf8) else { return ([], "") }
 
         // Pre-filter: only parse lines that contain "type":"user" (avoids parsing huge tool_result lines)
         let candidateLines = topicContent.components(separatedBy: .newlines)
             .filter { $0.contains("\"type\":\"user\"") }
 
         var topics: [String] = []
+        var summary = ""
 
         // Walk backwards through candidate lines (most recent first)
         for line in candidateLines.reversed() {
-            guard topics.count < 3 else { break }
-
             guard let jsonData = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
                   json["type"] as? String == "user",
@@ -518,15 +573,26 @@ final class SessionMonitor {
             }()
 
             if let content = msgContent {
-                let extracted = Self.extractTopic(from: content)
-                if extracted.count >= 5, extracted.contains(" "),
-                   !topics.contains(where: { $0.lowercased() == extracted.lowercased() }) {
-                    topics.append(extracted)
+                // Summarize the most recent meaningful user message
+                if summary.isEmpty {
+                    let s = Self.summarize(content)
+                    if !s.isEmpty { summary = s }
                 }
+
+                if topics.count < 3 {
+                    let extracted = Self.extractTopic(from: content)
+                    if extracted.count >= 5, extracted.contains(" "),
+                       !topics.contains(where: { $0.lowercased() == extracted.lowercased() }) {
+                        topics.append(extracted)
+                    }
+                }
+
+                // Stop once we have both summary and enough topics
+                if !summary.isEmpty, topics.count >= 3 { break }
             }
         }
 
-        return topics.reversed()  // oldest first
+        return (topics: topics.reversed(), summary: summary)  // topics: oldest first
     }
 
     // MARK: - Bash Command Classification

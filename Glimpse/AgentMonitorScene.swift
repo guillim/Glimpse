@@ -54,8 +54,8 @@ final class AgentMonitorScene: SKScene {
         for session in sessions {
             guard !departingNodes.contains(session.id) else { continue }
             if let existing = characterNodes[session.id] {
-                existing.updateActivity(session.activity, questionText: session.questionText)
-                existing.updateTopics(session.topics)
+                existing.updateActivity(session.activity, lastAssistantText: session.lastAssistantText)
+                existing.updateSummary(session.summary)
                 existing.updateIdleDuration(session.idleDuration)
             } else {
                 let node = CharacterNode(
@@ -63,8 +63,8 @@ final class AgentMonitorScene: SKScene {
                     projectName: session.projectName,
                     size: charSize
                 )
-                node.updateActivity(session.activity, questionText: session.questionText)
-                node.updateTopics(session.topics)
+                node.updateActivity(session.activity, lastAssistantText: session.lastAssistantText)
+                node.updateSummary(session.summary)
                 node.updateIdleDuration(session.idleDuration)
                 node.animateAppear()
                 addChild(node)
@@ -288,8 +288,8 @@ final class AgentMonitorScene: SKScene {
     // MARK: - Adaptive Grid Layout
 
     private func relayout() {
-        let activeNodes = characterNodes.values.filter { !departingNodes.contains($0.sessionID) }
-        let count = activeNodes.count
+        let allNodes = Array(characterNodes.values)
+        let count = allNodes.count
         guard count > 0 else { return }
 
         let cols = columns(for: count)
@@ -298,7 +298,7 @@ final class AgentMonitorScene: SKScene {
         let cellW = size.width / CGFloat(cols)
         let cellH = size.height / CGFloat(rows)
 
-        let sorted = activeNodes.sorted { $0.sessionID < $1.sessionID }
+        let sorted = allNodes.sorted { $0.sessionID < $1.sessionID }
 
         for (i, node) in sorted.enumerated() {
             let row = i / cols
@@ -314,12 +314,14 @@ final class AgentMonitorScene: SKScene {
 
             let targetPos = CGPoint(x: x, y: y)
 
+            // Don't reposition departing nodes — let them fade out in place
+            guard !departingNodes.contains(node.sessionID) else { continue }
             node.removeAction(forKey: "reposition")
             node.run(.move(to: targetPos, duration: 0.3), withKey: "reposition")
         }
 
         let newSize = characterSize(for: count)
-        for node in sorted {
+        for node in sorted where !departingNodes.contains(node.sessionID) {
             node.rescale(to: newSize)
         }
     }

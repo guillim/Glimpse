@@ -1,33 +1,6 @@
 import AppKit
 import SpriteKit
 
-/// SKView subclass that is click-through everywhere except over character nodes.
-/// Returning `self` from `hitTest` consumes the click (prevents "show desktop");
-/// returning `nil` lets it pass through normally.
-private final class CharacterHitSKView: SKView {
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        guard let scene = scene as? AgentMonitorScene else { return nil }
-        let local = convert(point, from: superview)
-        let scenePoint = scene.convertPoint(fromView: local)
-        return scene.characterNode(at: scenePoint) != nil ? self : nil
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        guard let scene = scene as? AgentMonitorScene else {
-            print("[CharacterHitSKView] mouseDown: no AgentMonitorScene")
-            return
-        }
-        let viewPoint = convert(event.locationInWindow, from: nil)
-        let scenePoint = scene.convertPoint(fromView: viewPoint)
-        let hit = scene.characterNode(at: scenePoint)
-        print("[CharacterHitSKView] mouseDown: view=\(viewPoint) scene=\(scenePoint) hit=\(hit?.sessionID ?? "nil")")
-        if let node = hit {
-            scene.activateAppForSession(node.sessionID)
-        }
-    }
-}
-
 /// Manages one borderless desktop-level window per connected screen,
 /// each hosting a mirrored SpriteKit scene of agent characters.
 final class DesktopWindowController {
@@ -45,7 +18,9 @@ final class DesktopWindowController {
     private let sessionMonitor = SessionMonitor()
     private var latestSessions: [SessionMonitor.Session] = []
     private var screenObserver: NSObjectProtocol?
-    private var cursorTimer: Timer?
+    private var eventTap: CFMachPort?
+    private var runLoopSource: CFRunLoopSource?
+    private var globalClickMonitor: Any?
 
     /// Timer that drops frame rate back to baseline after a boost.
     private var fpsDropTimer: Timer?
@@ -61,11 +36,18 @@ final class DesktopWindowController {
         observeScreenChanges()
         syncScreens()
         startMonitoring()
-        startCursorTracking()
+        setupEventTap()
     }
 
     deinit {
-        cursorTimer?.invalidate()
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
+        }
+        if let source = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+        }
+        if let monitor = globalClickMonitor { NSEvent.removeMonitor(monitor) }
         if let observer = screenObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -171,7 +153,7 @@ final class DesktopWindowController {
         win.setFrame(frame, display: false)
         win.orderFrontRegardless()
 
-        let sv = CharacterHitSKView(frame: CGRect(origin: .zero, size: frame.size))
+        let sv = SKView(frame: CGRect(origin: .zero, size: frame.size))
         sv.autoresizingMask = [.width, .height]
         sv.allowsTransparency = true
         sv.preferredFramesPerSecond = Self.baselineFPS
@@ -191,49 +173,79 @@ final class DesktopWindowController {
         return screen.deviceDescription[key] as? CGDirectDisplayID ?? 0
     }
 
-    // MARK: - Cursor Tracking
+    // MARK: - Event Tap (click interception)
 
-    /// Polls cursor position to toggle `ignoresMouseEvents` per-window.
-    /// When the cursor is over a character, the window accepts clicks so
-    /// macOS "click wallpaper to show desktop" is suppressed.
-    private func startCursorTracking() {
-        cursorTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) { [weak self] _ in
-            self?.updateMousePassthrough()
+    /// Installs a CGEventTap to intercept left-clicks before they reach the
+    /// desktop.  If the click lands on a character we consume it (preventing
+    /// "click wallpaper to show desktop") and activate the session's app.
+    /// Falls back to a global monitor if accessibility permissions are missing.
+    private func setupEventTap() {
+        let mask = CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
+        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: DesktopWindowController.eventTapCallback,
+            userInfo: selfPtr
+        ) else {
+            setupGlobalClickMonitor()
+            return
+        }
+
+        eventTap = tap
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        runLoopSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+    }
+
+    /// C-compatible callback for the CGEventTap.
+    private static let eventTapCallback: CGEventTapCallBack = { _, type, event, refcon in
+        guard let refcon else { return Unmanaged.passUnretained(event) }
+
+        // macOS may temporarily disable taps under load — re-enable.
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            return Unmanaged.passUnretained(event)
+        }
+
+        let controller = Unmanaged<DesktopWindowController>.fromOpaque(refcon).takeUnretainedValue()
+
+        // Convert CG coordinates (top-left origin) → AppKit (bottom-left origin).
+        let cgLocation = event.location
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        let screenPoint = NSPoint(x: cgLocation.x, y: primaryHeight - cgLocation.y)
+
+        if controller.characterHit(at: screenPoint) {
+            return nil  // consume — desktop never sees this click
+        }
+        return Unmanaged.passUnretained(event)
+    }
+
+    /// Fallback when CGEventTap isn't available (no accessibility permissions).
+    /// Activates the app but cannot prevent "show desktop".
+    private func setupGlobalClickMonitor() {
+        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            let screenPoint = event.locationInWindow  // screen coords for global monitors
+            _ = self?.characterHit(at: screenPoint)
         }
     }
 
-    private func updateMousePassthrough() {
-        let mouseLocation = NSEvent.mouseLocation
-
+    /// Check if `screenPoint` (AppKit coordinates) hits a character.
+    /// If so, activate the session's app and return `true`.
+    private func characterHit(at screenPoint: NSPoint) -> Bool {
         for entry in entries.values {
-            let windowPoint = entry.window.convertPoint(fromScreen: mouseLocation)
+            let windowPoint = entry.window.convertPoint(fromScreen: screenPoint)
             let viewPoint = entry.skView.convert(windowPoint, from: nil)
             let scenePoint = entry.scene.convertPoint(fromView: viewPoint)
-            let hit = entry.scene.characterNode(at: scenePoint)
-
-            if hit != nil {
-                let wasIgnoring = entry.window.ignoresMouseEvents
-                entry.window.ignoresMouseEvents = false
-                if wasIgnoring {
-                    print("[Cursor] OVER character at screen=\(mouseLocation) scene=\(scenePoint) — accepting clicks")
-                }
-                // Only one window owns the cursor — keep others click-through.
-                for other in entries.values where other.window !== entry.window {
-                    other.window.ignoresMouseEvents = true
-                }
-                return
+            if let node = entry.scene.characterNode(at: scenePoint) {
+                entry.scene.activateAppForSession(node.sessionID)
+                return true
             }
         }
-
-        // Cursor not over any character — all windows click-through.
-        var wasAccepting = false
-        for entry in entries.values {
-            if !entry.window.ignoresMouseEvents { wasAccepting = true }
-            entry.window.ignoresMouseEvents = true
-        }
-        if wasAccepting {
-            print("[Cursor] LEFT character area — back to click-through")
-        }
+        return false
     }
 
     // MARK: - Power Management

@@ -49,15 +49,15 @@ final class CursorSessionProvider {
 
             let activity: SessionMonitor.Activity
             let effectiveLastModified: Date
-            let questionText: String?
+            let lastAssistantText: String?
             if isActive {
                 let classification = classifyActivity(db: db!, composerId: composer.id)
                 activity = classification.activity
-                questionText = classification.questionText
+                lastAssistantText = classification.lastAssistantText
                 effectiveLastModified = latestBubbleDate(db: db!, composerId: composer.id) ?? composer.lastModified
             } else {
                 activity = .done
-                questionText = nil
+                lastAssistantText = nil
                 effectiveLastModified = composer.lastModified
             }
 
@@ -70,9 +70,10 @@ final class CursorSessionProvider {
                 projectName: composer.projectName,
                 activity: activity,
                 topics: topic.isEmpty ? [] : [topic],
+                summary: topic,
                 lastModified: effectiveLastModified,
                 idleDuration: now.timeIntervalSince(effectiveLastModified),
-                questionText: questionText
+                lastAssistantText: lastAssistantText
             ))
         }
 
@@ -184,7 +185,7 @@ final class CursorSessionProvider {
 
     /// Classify the activity of an active Cursor session by reading its latest bubbles.
     /// Returns the activity and optional question text when asking.
-    private func classifyActivity(db: OpaquePointer, composerId: String) -> (activity: SessionMonitor.Activity, questionText: String?) {
+    private func classifyActivity(db: OpaquePointer, composerId: String) -> (activity: SessionMonitor.Activity, lastAssistantText: String?) {
         let sql = "SELECT value FROM cursorDiskKV WHERE key LIKE ?1 ORDER BY json_extract(value, '$.createdAt') DESC LIMIT 5"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return (.thinking, nil) }
@@ -214,14 +215,14 @@ final class CursorSessionProvider {
             // Check for asking states first
             if toolName == "ask_question" && toolStatus == "loading" {
                 // Extract question text from params
-                var questionText: String?
+                var lastAssistantText: String?
                 if let params = toolData["params"] as? String,
                    let paramsData = params.data(using: .utf8),
                    let paramsJson = try? JSONSerialization.jsonObject(with: paramsData) as? [String: Any],
                    let q = paramsJson["question"] as? String {
-                    questionText = q
+                    lastAssistantText = q
                 }
-                return (.asking, questionText)
+                return (.asking, lastAssistantText)
             }
 
             if toolName == "run_terminal_command_v2" {

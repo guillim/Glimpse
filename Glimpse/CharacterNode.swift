@@ -28,7 +28,7 @@ final class CharacterNode: SKNode {
     private(set) var currentActivity: SessionMonitor.Activity = .sleeping
 
     /// Current question text when in .asking state.
-    private var currentQuestionText: String?
+    private var currentAssistantText: String?
 
     /// Formatted idle duration text (e.g. "2min", "1h30m"), nil when not idle.
     private var idleDurationText: String?
@@ -112,8 +112,8 @@ final class CharacterNode: SKNode {
         dividerNode.position = CGPoint(x: 0, y: dividerY)
 
         // Project label: "folder:" prefix (dim) + project name (brighter)
-        let projectFontSize = max(size * 0.10, 7)
-        let projectY = dividerY - size * 0.12
+        let projectFontSize = max(size * 0.09, 7)
+        let projectY = dividerY - size * 0.06
 
         folderPrefixLabel = SKLabelNode(fontNamed: "Menlo")
         folderPrefixLabel.text = "folder:"
@@ -141,49 +141,50 @@ final class CharacterNode: SKNode {
 
         // "working on:" section
         let sectionFontSize = max(size * 0.09, 7)
-        let contentFontSize = max(size * 0.10, 7.5)
+        let contentFontSize = max(size * 0.09, 7)
         let sectionPadding: CGFloat = 8
         let sectionLeftX = -cardW * 0.5 + sectionPadding
         let sectionMaxWidth = cardW - sectionPadding * 2
 
+        // "working on:" prefix — hidden, kept for node tree compatibility
         let workingOnY = projectY - projectFontSize - 3
         workingOnPrefix = SKLabelNode(fontNamed: "Menlo")
-        workingOnPrefix.text = "working on:"
+        workingOnPrefix.text = ""
         workingOnPrefix.fontSize = sectionFontSize
         workingOnPrefix.fontColor = .init(red: 0.35, green: 0.35, blue: 0.42, alpha: 1)
         workingOnPrefix.position = CGPoint(x: sectionLeftX, y: workingOnY)
         workingOnPrefix.verticalAlignmentMode = .top
         workingOnPrefix.horizontalAlignmentMode = .left
 
-        topicLabel = SKLabelNode(fontNamed: "Menlo-Bold")
+        // Topic hashtags — single line
+        topicLabel = SKLabelNode(fontNamed: "Menlo")
         topicLabel.text = ""
-        topicLabel.fontSize = contentFontSize
-        topicLabel.fontColor = .init(red: 0.7, green: 0.7, blue: 0.78, alpha: 1)
-        topicLabel.numberOfLines = 2
+        topicLabel.fontSize = sectionFontSize
+        topicLabel.fontColor = .init(red: 0.78, green: 0.72, blue: 0.45, alpha: 1)
+        topicLabel.numberOfLines = 1
         topicLabel.preferredMaxLayoutWidth = sectionMaxWidth
-        let topicY = workingOnY - sectionFontSize - 1
-        topicLabel.position = CGPoint(x: sectionLeftX, y: topicY)
+        topicLabel.position = CGPoint(x: sectionLeftX, y: workingOnY)
         topicLabel.verticalAlignmentMode = .top
         topicLabel.horizontalAlignmentMode = .left
 
-        // "status:" section
-        let statusSectionY = topicY - contentFontSize * 2.2 - 2
+        // "status:" prefix — hidden, kept for node tree compatibility
+        let statusSectionY = workingOnY - sectionFontSize - 3
         statusPrefix = SKLabelNode(fontNamed: "Menlo")
-        statusPrefix.text = "status:"
+        statusPrefix.text = ""
         statusPrefix.fontSize = sectionFontSize
         statusPrefix.fontColor = .init(red: 0.35, green: 0.35, blue: 0.42, alpha: 1)
         statusPrefix.position = CGPoint(x: sectionLeftX, y: statusSectionY)
         statusPrefix.verticalAlignmentMode = .top
         statusPrefix.horizontalAlignmentMode = .left
 
+        // Status detail — shows last sentence of assistant's last message
         statusDetailLabel = SKLabelNode(fontNamed: "Menlo-Bold")
-        statusDetailLabel.text = "idle"
+        statusDetailLabel.text = ""
         statusDetailLabel.fontSize = contentFontSize
         statusDetailLabel.fontColor = .init(red: 0.5, green: 0.5, blue: 0.56, alpha: 1)
-        statusDetailLabel.numberOfLines = 2
+        statusDetailLabel.numberOfLines = 5
         statusDetailLabel.preferredMaxLayoutWidth = sectionMaxWidth
-        let statusDetailY = statusSectionY - sectionFontSize - 1
-        statusDetailLabel.position = CGPoint(x: sectionLeftX, y: statusDetailY)
+        statusDetailLabel.position = CGPoint(x: sectionLeftX, y: statusSectionY)
         statusDetailLabel.verticalAlignmentMode = .top
         statusDetailLabel.horizontalAlignmentMode = .left
 
@@ -310,11 +311,11 @@ final class CharacterNode: SKNode {
         }
     }
 
-    func updateActivity(_ activity: SessionMonitor.Activity, questionText: String? = nil) {
-        guard activity != currentActivity || (activity == .asking && questionText != currentQuestionText) else { return }
+    func updateActivity(_ activity: SessionMonitor.Activity, lastAssistantText: String? = nil) {
+        guard activity != currentActivity || lastAssistantText != currentAssistantText else { return }
         let previousActivity = currentActivity
         currentActivity = activity
-        currentQuestionText = questionText
+        currentAssistantText = lastAssistantText
 
         let newWord: String
         switch activity {
@@ -333,22 +334,27 @@ final class CharacterNode: SKNode {
         case .sleeping:   newWord = "IDLE"
         }
 
-        // Update status detail section
+        // Update status detail — always show last sentence of assistant's message
         let statusText: String
         let statusColor: NSColor
-        if activity == .asking, let q = questionText, !q.isEmpty {
-            let trimmed = q.trimmingCharacters(in: .whitespacesAndNewlines)
-            statusText = trimmed.count > 45 ? String(trimmed.prefix(44)) + "…" : trimmed
+        if let text = lastAssistantText, !text.isEmpty {
+            let lastSentence = Self.extractLastSentence(from: text)
+            statusText = lastSentence.count > 180 ? String(lastSentence.prefix(179)) + "…" : lastSentence
+        } else {
+            statusText = ""
+        }
+        if activity == .asking {
             statusColor = NSColor(red: 1.0, green: 0.69, blue: 0.38, alpha: 1)
         } else {
-            statusText = Self.statusDescription(activity)
             statusColor = NSColor(red: 0.5, green: 0.5, blue: 0.56, alpha: 1)
         }
+        let styledText = statusText.isEmpty
+            ? NSAttributedString()
+            : Self.markdownAttributedString(from: statusText, fontSize: statusDetailLabel.fontSize, baseColor: statusColor)
         statusDetailLabel.run(.sequence([
             .fadeOut(withDuration: 0.12),
             .run { [weak self] in
-                self?.statusDetailLabel.text = statusText
-                self?.statusDetailLabel.fontColor = statusColor
+                self?.statusDetailLabel.attributedText = styledText
             },
             .fadeIn(withDuration: 0.12)
         ]))
@@ -407,14 +413,21 @@ final class CharacterNode: SKNode {
         }
     }
 
-    func updateTopics(_ topics: [String]) {
-        // Show only the last 2 topics, truncated to fit
-        let display = topics.suffix(2).map { topic -> String in
-            topic.count > 30 ? String(topic.prefix(29)) + "…" : topic
+    func updateSummary(_ summary: String) {
+        let maxChars = Int(topicLabel.preferredMaxLayoutWidth / (topicLabel.fontSize * 0.65))
+        let display: String
+        if summary.count > maxChars {
+            let prefix = String(summary.prefix(maxChars))
+            if let lastSpace = prefix.lastIndex(of: " ") {
+                display = String(prefix[..<lastSpace]) + "..."
+            } else {
+                display = String(summary.prefix(maxChars - 1)) + "..."
+            }
+        } else {
+            display = summary
         }
-        let joined = display.isEmpty ? "nothing" : display.joined(separator: "\n")
-        guard joined != topicLabel.text else { return }
-        topicLabel.text = joined
+        guard display != topicLabel.text else { return }
+        topicLabel.text = display
     }
 
     /// Whether this activity shows duration outside the pill.
@@ -425,24 +438,99 @@ final class CharacterNode: SKNode {
         }
     }
 
-    /// Human-readable status description for the status detail section.
-    private static func statusDescription(_ activity: SessionMonitor.Activity) -> String {
-        switch activity {
-        case .reading:    return "reading files"
-        case .writing:    return "editing files"
-        case .running:    return "running command"
-        case .testing:    return "running tests"
-        case .building:   return "building project"
-        case .committing: return "git operation"
-        case .thinking:   return "thinking…"
-        case .processing: return "processing input…"
-        case .spawning:   return "launching subagent"
-        case .searching:  return "searching the web"
-        case .asking:     return "waiting for input"
-        case .done:       return "task complete"
-        case .sleeping:   return "idle"
-        }
+    /// Extract the last sentence from a text block.
+    /// Splits on sentence-ending punctuation and newlines, returns the last non-empty segment.
+    private static func extractLastSentence(from text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Split on sentence boundaries: periods, exclamation marks, question marks, and newlines
+        let segments = trimmed.components(separatedBy: CharacterSet(charactersIn: ".!?\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        // Return last segment; if the original ended with "?" re-append it
+        guard let last = segments.last else { return trimmed }
+        if trimmed.hasSuffix("?") { return last + "?" }
+        if trimmed.hasSuffix("!") { return last + "!" }
+        return last
     }
+
+    /// Parse simple markdown patterns into an NSAttributedString.
+    /// Supports: `code`, **bold**, *italic* / _italic_
+    private static func markdownAttributedString(
+        from text: String,
+        fontSize: CGFloat,
+        baseColor: NSColor
+    ) -> NSAttributedString {
+        let baseFont = NSFont(name: "Menlo", size: fontSize) ?? NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        let boldFont = NSFont(name: "Menlo-Bold", size: fontSize) ?? NSFont.monospacedSystemFont(ofSize: fontSize, weight: .bold)
+        let italicFont = NSFont(name: "Menlo-Italic", size: fontSize) ?? NSFont(name: "Menlo-Oblique", size: fontSize) ?? baseFont
+
+        let baseAttrs: [NSAttributedString.Key: Any] = [
+            .font: baseFont,
+            .foregroundColor: baseColor
+        ]
+        let codeColor = NSColor(red: 0.45, green: 0.82, blue: 0.82, alpha: 1)  // teal
+        let boldColor = NSColor(red: 0.78, green: 0.78, blue: 0.84, alpha: 1)  // brighter white
+        let italicColor = NSColor(red: 0.58, green: 0.58, blue: 0.68, alpha: 1)  // slightly muted
+
+        // Patterns: `code`, **bold**, *italic* (greedy-safe, non-nested)
+        let patterns: [(regex: NSRegularExpression, attrs: [NSAttributedString.Key: Any], group: Int)] = [
+            (try! NSRegularExpression(pattern: "`([^`]+)`"), [.font: baseFont, .foregroundColor: codeColor], 1),
+            (try! NSRegularExpression(pattern: "\\*\\*([^*]+)\\*\\*"), [.font: boldFont, .foregroundColor: boldColor], 1),
+            (try! NSRegularExpression(pattern: "(?<!\\*)\\*([^*]+)\\*(?!\\*)"), [.font: italicFont, .foregroundColor: italicColor], 1),
+            (try! NSRegularExpression(pattern: "(?<!_)_([^_]+)_(?!_)"), [.font: italicFont, .foregroundColor: italicColor], 1),
+        ]
+
+        // Collect all matches with their ranges and replacement info
+        struct MatchInfo {
+            let fullRange: NSRange
+            let contentRange: NSRange
+            let attrs: [NSAttributedString.Key: Any]
+        }
+
+        let nsText = text as NSString
+        var matches: [MatchInfo] = []
+        for p in patterns {
+            let results = p.regex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
+            for r in results {
+                matches.append(MatchInfo(fullRange: r.range, contentRange: r.range(at: p.group), attrs: p.attrs))
+            }
+        }
+
+        // Sort by position, remove overlaps (first match wins)
+        matches.sort { $0.fullRange.location < $1.fullRange.location }
+        var filtered: [MatchInfo] = []
+        var lastEnd = 0
+        for m in matches {
+            if m.fullRange.location >= lastEnd {
+                filtered.append(m)
+                lastEnd = m.fullRange.location + m.fullRange.length
+            }
+        }
+
+        // Build attributed string: plain text between matches, styled content for matches
+        let result = NSMutableAttributedString()
+        var cursor = 0
+        for m in filtered {
+            // Append plain text before this match
+            if m.fullRange.location > cursor {
+                let plainRange = NSRange(location: cursor, length: m.fullRange.location - cursor)
+                let plain = nsText.substring(with: plainRange)
+                result.append(NSAttributedString(string: plain, attributes: baseAttrs))
+            }
+            // Append styled content (without the markdown delimiters)
+            let content = nsText.substring(with: m.contentRange)
+            result.append(NSAttributedString(string: content, attributes: m.attrs.merging(baseAttrs) { new, _ in new }))
+            cursor = m.fullRange.location + m.fullRange.length
+        }
+        // Append remaining plain text
+        if cursor < nsText.length {
+            let remaining = nsText.substring(from: cursor)
+            result.append(NSAttributedString(string: remaining, attributes: baseAttrs))
+        }
+
+        return result
+    }
+
 
     /// Update the idle duration and refresh the duration label for standby states.
     func updateIdleDuration(_ seconds: TimeInterval) {
@@ -571,13 +659,13 @@ final class CharacterNode: SKNode {
         ]))
     }
 
-    /// Show "Goodbye!" for 5 seconds, then fade out. Calls completion when done.
+    /// Show "Goodbye!" for 3 seconds, then fade out. Calls completion when done.
     func animateDisappear(completion: @escaping () -> Void) {
         stopBreathing()
         goodbyeLabel.run(.fadeIn(withDuration: 0.3))
 
         run(.sequence([
-            .wait(forDuration: 5.0),
+            .wait(forDuration: 3.0),
             .fadeOut(withDuration: 1.0),
             .run(completion)
         ]))
