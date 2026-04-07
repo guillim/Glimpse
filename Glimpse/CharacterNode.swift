@@ -216,11 +216,6 @@ final class CharacterNode: SKNode {
         addChild(goodbyeLabel)
     }
 
-    /// Bounds of the card background in local coordinates, for hit-testing.
-    var cardBounds: CGRect {
-        cardBG.frame
-    }
-
     required init?(coder: NSCoder) { fatalError("Not implemented") }
 
     // MARK: - Status Updates

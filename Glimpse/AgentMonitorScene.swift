@@ -112,18 +112,7 @@ final class AgentMonitorScene: SKScene {
         }
     }
 
-    // MARK: - Click Interaction
-
-    /// Find the CharacterNode at the given scene point, if any.
-    func characterNode(at point: CGPoint) -> CharacterNode? {
-        for (id, node) in characterNodes where !departingNodes.contains(id) {
-            let local = convert(point, to: node)
-            if node.cardBounds.contains(local) {
-                return node
-            }
-        }
-        return nil
-    }
+    // MARK: - App Activation
 
     /// Resolve a session ID to its parent GUI app and activate it.
     func activateAppForSession(_ sessionID: String) {

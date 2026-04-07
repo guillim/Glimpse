@@ -117,6 +117,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let item = NSMenuItem(title: title, action: #selector(menuItemClicked(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = session.id
+
+                let bodyColor = CharacterGenerator.traits(for: session.id).bodyColor
+                let dot = NSAttributedString(string: "● ", attributes: [.foregroundColor: bodyColor, .font: NSFont.systemFont(ofSize: 14)])
+                let text = NSAttributedString(string: title, attributes: [.font: NSFont.menuFont(ofSize: 0)])
+                let combined = NSMutableAttributedString()
+                combined.append(dot)
+                combined.append(text)
+                item.attributedTitle = combined
+
                 menu.addItem(item)
             }
         }

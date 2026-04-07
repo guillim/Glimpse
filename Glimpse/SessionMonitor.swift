@@ -501,6 +501,10 @@ final class SessionMonitor {
                     // approved/executed yet — the session is waiting for user permission.
                     if !sawToolResult {
                         activity = .asking
+                        // Build a meaningful summary of what tool is pending approval
+                        if lastAssistantText == nil {
+                            lastAssistantText = Self.pendingToolSummary(blocks: blocks)
+                        }
                     } else {
                         let toolSet = Set(toolNames)
                         if toolSet.contains("Bash") {
@@ -663,5 +667,37 @@ final class SessionMonitor {
             return classifyTerminalCommand(command)
         }
         return .running
+    }
+
+    /// Build a human-readable summary of the pending tool awaiting permission.
+    private static func pendingToolSummary(blocks: [[String: Any]]) -> String? {
+        // Walk backwards to find the last tool_use block
+        for block in blocks.reversed() {
+            guard block["type"] as? String == "tool_use",
+                  let name = block["name"] as? String,
+                  let input = block["input"] as? [String: Any] else { continue }
+
+            switch name {
+            case "Bash":
+                if let cmd = input["command"] as? String {
+                    let first = cmd.components(separatedBy: .newlines).first ?? cmd
+                    let trimmed = first.trimmingCharacters(in: .whitespaces)
+                    return "Run: \(trimmed)"
+                }
+            case "Edit", "Write", "Read":
+                if let path = input["file_path"] as? String {
+                    let file = (path as NSString).lastPathComponent
+                    return "\(name): \(file)"
+                }
+            case "Agent":
+                if let desc = input["description"] as? String {
+                    return "Agent: \(desc)"
+                }
+            default:
+                break
+            }
+            return "Approve: \(name)"
+        }
+        return nil
     }
 }
