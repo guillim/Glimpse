@@ -16,7 +16,19 @@
 		A1000008 /* CharacterNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000009 /* CharacterNode.swift */; };
 		A1000009 /* AgentMonitorScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000010 /* AgentMonitorScene.swift */; };
 		A1000010 /* CursorSessionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000011 /* CursorSessionProvider.swift */; };
+		B1000001 /* SessionMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000001 /* SessionMonitorTests.swift */; };
+		B1000002 /* CharacterGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002 /* CharacterGeneratorTests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B9000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A9000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A6000001;
+			remoteInfo = Glimpse;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		A2000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -31,10 +43,20 @@
 		A2000012 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2000013 /* Glimpse.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Glimpse.xcconfig; sourceTree = "<group>"; };
 		A3000001 /* Glimpse.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Glimpse.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B2000001 /* SessionMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitorTests.swift; sourceTree = "<group>"; };
+		B2000002 /* CharacterGeneratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterGeneratorTests.swift; sourceTree = "<group>"; };
+		B3000001 /* GlimpseTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GlimpseTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A4000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B4000001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -48,6 +70,7 @@
 			isa = PBXGroup;
 			children = (
 				A3000001 /* Glimpse.app */,
+				B3000001 /* GlimpseTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -69,11 +92,21 @@
 			path = Glimpse;
 			sourceTree = "<group>";
 		};
+		B5000001 /* GlimpseTests */ = {
+			isa = PBXGroup;
+			children = (
+				B2000001 /* SessionMonitorTests.swift */,
+				B2000002 /* CharacterGeneratorTests.swift */,
+			);
+			path = GlimpseTests;
+			sourceTree = "<group>";
+		};
 		A5000003 = {
 			isa = PBXGroup;
 			children = (
 				A2000013 /* Glimpse.xcconfig */,
 				A5000002 /* Glimpse */,
+				B5000001 /* GlimpseTests */,
 				A5000001 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -97,6 +130,23 @@
 			productName = Glimpse;
 			productReference = A3000001 /* Glimpse.app */;
 			productType = "com.apple.product-type.application";
+		};
+		B6000001 /* GlimpseTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B8000001 /* Build configuration list for PBXNativeTarget "GlimpseTests" */;
+			buildPhases = (
+				B7000001 /* Sources */,
+				B4000001 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B9000002 /* PBXTargetDependency */,
+			);
+			name = GlimpseTests;
+			productName = GlimpseTests;
+			productReference = B3000001 /* GlimpseTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -123,6 +173,7 @@
 			projectRoot = "";
 			targets = (
 				A6000001 /* Glimpse */,
+				B6000001 /* GlimpseTests */,
 			);
 		};
 /* End PBXProject section */
@@ -154,7 +205,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B7000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B1000001 /* SessionMonitorTests.swift in Sources */,
+				B1000002 /* CharacterGeneratorTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B9000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A6000001 /* Glimpse */;
+			targetProxy = B9000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A8000003 /* Debug */ = {
@@ -295,6 +363,38 @@
 			};
 			name = Release;
 		};
+		B8000002 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A2000013 /* Glimpse.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.guillim.glimpse.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Glimpse.app/Contents/MacOS/Glimpse";
+			};
+			name = Debug;
+		};
+		B8000003 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A2000013 /* Glimpse.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.guillim.glimpse.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Glimpse.app/Contents/MacOS/Glimpse";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -312,6 +412,15 @@
 			buildConfigurations = (
 				A8000005 /* Debug */,
 				A8000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B8000001 /* Build configuration list for PBXNativeTarget "GlimpseTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B8000002 /* Debug */,
+				B8000003 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

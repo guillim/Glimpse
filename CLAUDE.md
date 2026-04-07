@@ -23,6 +23,11 @@ Glimpse must stay invisible on the system: low CPU, low RAM, minimal GPU. If a p
 6. **Capture Lessons**: After any correction from the user, add a bullet to the "Auto-created Lessons" section at the bottom of this file.
 7. **delete the todo**: once finished implementing, ask the user if you can delete the tasks/todo-XXXXX.md to leave the codebase clean of it
 
+## Testing
+- Run `xcodebuild test -project Glimpse.xcodeproj -scheme Glimpse -destination 'platform=macOS' -only-testing:GlimpseTests` and confirm all tests pass before considering any feature complete.
+- When implementing a big feature, add at least one new test covering its happy path before marking the work as done.
+- Tests live in `GlimpseTests/`. `SessionMonitorTests.swift` covers the session pipeline, `CharacterGeneratorTests.swift` covers character generation.
+
 ## Verification Before Done
 - Never mark a task complete without proving it works.
 - Diff behavior between main and your changes when relevant.

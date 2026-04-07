@@ -53,14 +53,32 @@ final class SessionMonitor {
     /// Serial queue for file I/O and JSON parsing — keeps the main thread free.
     private let scanQueue = DispatchQueue(label: "com.glimpse.session-monitor", qos: .utility)
 
-    /// Provider for Cursor IDE agent sessions.
-    private let cursorProvider = CursorSessionProvider()
+    /// Provider for Cursor IDE agent sessions (nil disables Cursor discovery).
+    private let cursorProvider: CursorSessionProvider?
 
     /// Base directory for Claude Code projects.
-    private let claudeProjectsDir: URL = {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return home.appendingPathComponent(".claude/projects", isDirectory: true)
-    }()
+    private let claudeProjectsDir: URL
+
+    /// Closure that returns the set of active session IDs.
+    private let activeSessionIDsProvider: () -> Set<String>
+
+    /// Create a session monitor.
+    /// - Parameters:
+    ///   - claudeProjectsDir: Override the default `~/.claude/projects` directory (useful for testing).
+    ///   - activeSessionIDs: Override the active-session-ID lookup (useful for testing).
+    ///   - cursorProvider: Cursor session provider, or `nil` to disable. Defaults to a real provider.
+    init(
+        claudeProjectsDir: URL? = nil,
+        activeSessionIDs: (() -> Set<String>)? = nil,
+        cursorProvider: CursorSessionProvider? = CursorSessionProvider()
+    ) {
+        self.claudeProjectsDir = claudeProjectsDir ?? {
+            let home = FileManager.default.homeDirectoryForCurrentUser
+            return home.appendingPathComponent(".claude/projects", isDirectory: true)
+        }()
+        self.activeSessionIDsProvider = activeSessionIDs ?? Self.activeSessionIDs
+        self.cursorProvider = cursorProvider
+    }
 
     /// Start polling every 2 seconds.
     func start() {
@@ -92,7 +110,7 @@ final class SessionMonitor {
     }
 
     /// Discover all active sessions across all projects.
-    private func discoverSessions() -> [Session] {
+    func discoverSessions() -> [Session] {
         let fm = FileManager.default
 
         guard let projectDirs = try? fm.contentsOfDirectory(
@@ -106,7 +124,7 @@ final class SessionMonitor {
         var sessions: [Session] = []
         let now = Date()
 
-        let activeSessionIDs = Self.activeSessionIDs()
+        let activeSessionIDs = self.activeSessionIDsProvider()
 
         for dirURL in projectDirs {
             let isDir = (try? dirURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
@@ -166,8 +184,10 @@ final class SessionMonitor {
         }
 
         // Merge Cursor agent sessions
-        let cursorSessions = cursorProvider.discoverSessions(now: now)
-        sessions.append(contentsOf: cursorSessions)
+        if let cursorProvider {
+            let cursorSessions = cursorProvider.discoverSessions(now: now)
+            sessions.append(contentsOf: cursorSessions)
+        }
 
         // Prune cache entries for sessions no longer present.
         let currentIDs = Set(sessions.map(\.id))
