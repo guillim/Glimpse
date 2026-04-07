@@ -469,7 +469,15 @@ final class SessionMonitor {
                         if block["type"] as? String == "text",
                            let text = block["text"] as? String {
                             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                            if trimmed.hasSuffix("?") {
+                            // Check the last paragraph for a question mark — agents often
+                            // ask a question then add a short clarifying note after it.
+                            let lastParagraph: Substring
+                            if let range = trimmed.range(of: "\n\n", options: .backwards) {
+                                lastParagraph = trimmed[range.upperBound...]
+                            } else {
+                                lastParagraph = trimmed[...]
+                            }
+                            if lastParagraph.contains("?") {
                                 isAsking = true
                             }
                             lastAssistantText = text
