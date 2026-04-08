@@ -168,7 +168,7 @@ final class CharacterNode: SKNode {
         statusDetailLabel.text = ""
         statusDetailLabel.fontSize = contentFontSize
         statusDetailLabel.fontColor = .init(red: 0.5, green: 0.5, blue: 0.56, alpha: 1)
-        statusDetailLabel.numberOfLines = 6
+        statusDetailLabel.numberOfLines = 10
         statusDetailLabel.preferredMaxLayoutWidth = sectionMaxWidth
         statusDetailLabel.position = CGPoint(x: sectionLeftX, y: statusSectionY)
         statusDetailLabel.verticalAlignmentMode = .top
@@ -325,7 +325,7 @@ final class CharacterNode: SKNode {
         let statusColor: NSColor
         if let text = lastAssistantText, !text.isEmpty {
             let lastSentence = Self.extractLastSentence(from: text)
-            statusText = lastSentence.count > 180 ? String(lastSentence.prefix(179)) + "…" : lastSentence
+            statusText = lastSentence.count > 300 ? String(lastSentence.prefix(299)) + "…" : lastSentence
         } else {
             statusText = ""
         }
