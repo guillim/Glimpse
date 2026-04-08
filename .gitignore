@@ -13,5 +13,8 @@ Glimpse.xcconfig
 # Build
 build/
 
+# Worktrees
+.worktrees/
+
 # Superpowers (brainstorm artifacts with local paths)
 .superpowers/
