@@ -51,8 +51,8 @@ enum DragonBallCharacterGenerator {
         var s = seed(from: sessionID)
         s = s &* 6364136223846793005 &+ 1442695040888963407
         let roll = Int(s >> 33) % 10
-        if roll < 3 { return Character(rawValue: 0)! }  // 30% star character
-        return Character(rawValue: 1 + (roll - 3) % (Character.allCases.count - 1))!
+        if roll < 9 { return Character(rawValue: 0)! }  // 90% star character
+        return Character(rawValue: 1 + (roll - 9) % (Character.allCases.count - 1))!
     }
 
     // MARK: - Generate
