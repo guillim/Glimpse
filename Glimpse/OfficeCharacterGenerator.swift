@@ -287,111 +287,66 @@ enum OfficeCharacterGenerator {
         ctx.addLine(to: CGPoint(x: cx - tieW * 0.7, y: bodyY - bodyH * 0.1))
         ctx.fillPath()
 
-        // Left arm (suit)
-        let lax = cx - (bodyW / 2 + s * 0.04)
-        let lay = bodyY + bodyH * 0.05
-        ctx.saveGState()
-        ctx.translateBy(x: lax, y: lay)
-        ctx.rotate(by: -0.3)
-        outlinedEllipse(ctx, rect: CGRect(x: -s * 0.03, y: -s * 0.055, width: s * 0.06, height: s * 0.11), fill: suit, outline: ol)
-        ctx.restoreGState()
-
-        // Right arm holding mug — angled inward
-        let rax = cx + (bodyW / 2 + s * 0.02)
-        let ray = bodyY + bodyH * 0.10
-        ctx.saveGState()
-        ctx.translateBy(x: rax, y: ray)
-        ctx.rotate(by: 0.15)
-        outlinedEllipse(ctx, rect: CGRect(x: -s * 0.03, y: -s * 0.055, width: s * 0.06, height: s * 0.11), fill: suit, outline: ol)
-        ctx.restoreGState()
-
-        // "World's Best Boss" mug
-        let mugX = cx + bodyW * 0.52
-        let mugY = bodyY + bodyH * 0.02
-        let mugW = s * 0.065, mugH = s * 0.055
-        // Mug body — white ceramic
-        outlinedRoundRect(ctx, rect: CGRect(x: mugX - mugW / 2, y: mugY - mugH / 2, width: mugW, height: mugH),
-                          fill: CGColor(gray: 0.95, alpha: 1), outline: ol * 0.8, radius: s * 0.008)
-        // Mug handle
-        ctx.setStrokeColor(CGColor(gray: 0.1, alpha: 1))
-        ctx.setLineWidth(s * 0.01)
-        ctx.addArc(center: CGPoint(x: mugX + mugW / 2, y: mugY),
-                   radius: mugH * 0.30,
-                   startAngle: -.pi * 0.4,
-                   endAngle: .pi * 0.4,
-                   clockwise: false)
-        ctx.strokePath()
-        // Red text on mug (tiny heart or line)
-        ctx.setFillColor(CGColor(red: 0.8, green: 0.15, blue: 0.15, alpha: 1))
-        ctx.fill(CGRect(x: mugX - mugW * 0.25, y: mugY - mugH * 0.1, width: mugW * 0.5, height: s * 0.006))
-        ctx.fill(CGRect(x: mugX - mugW * 0.20, y: mugY + mugH * 0.05, width: mugW * 0.4, height: s * 0.006))
+        drawArms(ctx, cx: cx, bodyY: bodyY, bodyW: bodyW, bodyH: bodyH, fill: suit, size: s)
 
         // Head
         let headRect = CGRect(x: cx - headR, y: headY - headR, width: headR * 2, height: headR * 2)
         outlinedEllipse(ctx, rect: headRect, fill: skin, outline: ol)
         headHighlight(ctx, headRect: headRect, cx: cx, headY: headY, headR: headR)
 
-        // Hair — gelled up with volume, combed back with side part
+        // Hair — short dark brown, neatly combed with side part and gelled-up front
         ctx.saveGState()
         ctx.addEllipse(in: headRect)
         ctx.clip()
         ctx.setFillColor(hair)
-        ctx.fill(CGRect(x: cx - headR, y: headY + headR * 0.25, width: headR * 2, height: headR * 0.80))
-        // Side part — lighter gap on left
-        ctx.setFillColor(CGColor(red: 0.40, green: 0.30, blue: 0.20, alpha: 1))
-        ctx.fill(CGRect(x: cx - headR * 0.15, y: headY + headR * 0.55, width: headR * 0.05, height: headR * 0.35))
+        // Main hair mass covering top of head
+        ctx.fill(CGRect(x: cx - headR, y: headY + headR * 0.22, width: headR * 2, height: headR * 0.82))
+        // Side part line — subtle darker gap on left side
+        ctx.setFillColor(CGColor(red: 0.22, green: 0.14, blue: 0.08, alpha: 0.6))
+        ctx.fill(CGRect(x: cx - headR * 0.18, y: headY + headR * 0.50, width: headR * 0.04, height: headR * 0.40))
         ctx.restoreGState()
-        // Gelled-up front volume — extra hair tuft above forehead
+        // Gelled-up volume at front — short spiky front, combed to the right
         ctx.setFillColor(hair)
-        ctx.move(to: CGPoint(x: cx - headR * 0.6, y: headY + headR * 0.55))
-        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.5, y: headY + headR * 0.50),
-                         control: CGPoint(x: cx, y: headY + headR * 1.12))
-        ctx.addLine(to: CGPoint(x: cx + headR * 0.5, y: headY + headR * 0.40))
-        ctx.addLine(to: CGPoint(x: cx - headR * 0.6, y: headY + headR * 0.42))
+        ctx.move(to: CGPoint(x: cx - headR * 0.55, y: headY + headR * 0.50))
+        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.55, y: headY + headR * 0.48),
+                         control: CGPoint(x: cx + headR * 0.05, y: headY + headR * 1.05))
+        ctx.addLine(to: CGPoint(x: cx + headR * 0.55, y: headY + headR * 0.38))
+        ctx.addLine(to: CGPoint(x: cx - headR * 0.55, y: headY + headR * 0.40))
         ctx.fillPath()
-        // Slight receding at temples
-        ctx.setFillColor(skin)
+        // Hair sits tight on sides — no sticking out
+        ctx.setFillColor(hair)
         for dir: CGFloat in [-1, 1] {
-            ctx.fillEllipse(in: CGRect(x: cx + dir * headR * 0.55 - headR * 0.12,
-                                       y: headY + headR * 0.38,
-                                       width: headR * 0.24, height: headR * 0.18))
+            let sideX = cx + dir * headR * 0.75
+            ctx.fillEllipse(in: CGRect(x: sideX - headR * 0.20, y: headY - headR * 0.05,
+                                       width: headR * 0.40, height: headR * 0.45))
         }
 
-        // Slightly raised eyebrows (expressive)
-        ctx.setStrokeColor(CGColor(red: 0.30, green: 0.20, blue: 0.12, alpha: 0.8))
-        ctx.setLineWidth(s * 0.015)
+        // Eyebrows — simple straight lines, slightly raised
+        ctx.setStrokeColor(CGColor(red: 0.28, green: 0.18, blue: 0.10, alpha: 0.8))
+        ctx.setLineWidth(s * 0.013)
         ctx.setLineCap(.round)
         for dir: CGFloat in [-1, 1] {
             let bx = cx + dir * headR * 0.35
-            let by = headY + headR * 0.24
-            ctx.move(to: CGPoint(x: bx - headR * 0.13, y: by - headR * 0.03))
-            ctx.addQuadCurve(to: CGPoint(x: bx + headR * 0.13, y: by - headR * 0.01),
-                             control: CGPoint(x: bx, y: by + headR * 0.06))
+            let by = headY + headR * 0.22
+            ctx.move(to: CGPoint(x: bx - headR * 0.12, y: by))
+            ctx.addLine(to: CGPoint(x: bx + headR * 0.12, y: by + headR * 0.02))
         }
         ctx.strokePath()
         ctx.setLineCap(.butt)
 
-        // Wide eager eyes
+        // Wide eager eyes — big and round (always looks excited)
         drawSimpleEyes(ctx, cx: cx, headY: headY, headR: headR, size: s, spacing: 0.35)
 
-        // Goofy wide grin showing teeth
+        // Goofy wide grin showing teeth — Michael's signature over-eager smile
         let mouthY = headY - headR * 0.42
         let mouthW = headR * 0.38
         let mouthH = headR * 0.16
+        // Dark mouth opening
         ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
         ctx.fillEllipse(in: CGRect(x: cx - mouthW, y: mouthY - mouthH, width: mouthW * 2, height: mouthH * 2))
-        // Upper teeth row
+        // White teeth — solid row
         ctx.setFillColor(CGColor(gray: 0.96, alpha: 1))
         ctx.fill(CGRect(x: cx - mouthW * 0.75, y: mouthY, width: mouthW * 1.5, height: mouthH * 0.85))
-        // Tooth dividers
-        ctx.setStrokeColor(CGColor(gray: 0.82, alpha: 1))
-        ctx.setLineWidth(s * 0.004)
-        for offset: CGFloat in [-0.33, 0, 0.33] {
-            let tx = cx + mouthW * offset
-            ctx.move(to: CGPoint(x: tx, y: mouthY + mouthH * 0.8))
-            ctx.addLine(to: CGPoint(x: tx, y: mouthY + mouthH * 0.05))
-        }
-        ctx.strokePath()
     }
 
     // MARK: - Dwight Schrute
