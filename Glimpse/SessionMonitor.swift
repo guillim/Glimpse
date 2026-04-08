@@ -59,24 +59,30 @@ final class SessionMonitor {
     /// Base directory for Claude Code projects.
     private let claudeProjectsDir: URL
 
-    /// Closure that returns the set of active session IDs.
-    private let activeSessionIDsProvider: () -> Set<String>
+    /// Metadata for an active session read from ~/.claude/sessions/*.json.
+    struct ActiveSessionMeta {
+        let cwd: String      // Working directory from the session JSON
+        let startedAt: Date  // When the session was started
+    }
+
+    /// Closure that returns active session metas keyed by session ID.
+    private let activeSessionMetasProvider: () -> [String: ActiveSessionMeta]
 
     /// Create a session monitor.
     /// - Parameters:
     ///   - claudeProjectsDir: Override the default `~/.claude/projects` directory (useful for testing).
-    ///   - activeSessionIDs: Override the active-session-ID lookup (useful for testing).
+    ///   - activeSessionMetas: Override the active-session lookup (useful for testing).
     ///   - cursorProvider: Cursor session provider, or `nil` to disable. Defaults to a real provider.
     init(
         claudeProjectsDir: URL? = nil,
-        activeSessionIDs: (() -> Set<String>)? = nil,
+        activeSessionMetas: (() -> [String: ActiveSessionMeta])? = nil,
         cursorProvider: CursorSessionProvider? = CursorSessionProvider()
     ) {
         self.claudeProjectsDir = claudeProjectsDir ?? {
             let home = FileManager.default.homeDirectoryForCurrentUser
             return home.appendingPathComponent(".claude/projects", isDirectory: true)
         }()
-        self.activeSessionIDsProvider = activeSessionIDs ?? Self.activeSessionIDs
+        self.activeSessionMetasProvider = activeSessionMetas ?? Self.activeSessionMetas
         self.cursorProvider = cursorProvider
     }
 
@@ -113,18 +119,17 @@ final class SessionMonitor {
     func discoverSessions() -> [Session] {
         let fm = FileManager.default
 
-        guard let projectDirs = try? fm.contentsOfDirectory(
+        let projectDirs = (try? fm.contentsOfDirectory(
             at: claudeProjectsDir,
             includingPropertiesForKeys: [.isDirectoryKey],
             options: .skipsHiddenFiles
-        ) else {
-            return []
-        }
+        )) ?? []
 
         var sessions: [Session] = []
         let now = Date()
 
-        let activeSessionIDs = self.activeSessionIDsProvider()
+        let activeMetas = self.activeSessionMetasProvider()
+        let activeSessionIDs = Set(activeMetas.keys)
 
         for dirURL in projectDirs {
             let isDir = (try? dirURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
@@ -183,6 +188,23 @@ final class SessionMonitor {
             }
         }
 
+        // Create synthetic sessions for active processes that have no JSONL file yet
+        // (e.g. a freshly opened Claude window before the user sends the first message).
+        let discoveredIDs = Set(sessions.map(\.id))
+        for (sessionID, meta) in activeMetas where !discoveredIDs.contains(sessionID) {
+            let projectName = Self.extractProjectName(fromCwd: meta.cwd)
+            sessions.append(Session(
+                id: sessionID,
+                projectName: projectName,
+                activity: .sleeping,
+                topics: [],
+                summary: "",
+                lastModified: meta.startedAt,
+                idleDuration: now.timeIntervalSince(meta.startedAt),
+                lastAssistantText: nil
+            ))
+        }
+
         // Merge Cursor agent sessions
         if let cursorProvider {
             let cursorSessions = cursorProvider.discoverSessions(now: now)
@@ -201,6 +223,13 @@ final class SessionMonitor {
     static func extractProjectName(from dirName: String) -> String {
         let components = dirName.split(separator: "-").map(String.init)
         return components.last ?? dirName
+    }
+
+    /// Extract human-readable project name from a working directory path.
+    /// "/Users/gui/github/background" → "background"
+    static func extractProjectName(fromCwd cwd: String) -> String {
+        guard !cwd.isEmpty else { return "unknown" }
+        return URL(fileURLWithPath: cwd).lastPathComponent
     }
 
     // MARK: - Smart Topic Extraction
@@ -361,17 +390,17 @@ final class SessionMonitor {
         return truncated + "..."
     }
 
-    /// Read ~/.claude/sessions/*.json to get session IDs of currently running Claude processes.
-    private static func activeSessionIDs() -> Set<String> {
+    /// Read ~/.claude/sessions/*.json to get metadata for currently running Claude processes.
+    private static func activeSessionMetas() -> [String: ActiveSessionMeta] {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let sessionsDir = home.appendingPathComponent(".claude/sessions", isDirectory: true)
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: sessionsDir,
             includingPropertiesForKeys: nil,
             options: .skipsHiddenFiles
-        ) else { return [] }
+        ) else { return [:] }
 
-        var result = Set<String>()
+        var result: [String: ActiveSessionMeta] = [:]
         for file in files where file.pathExtension == "json" {
             guard let data = try? Data(contentsOf: file),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -383,7 +412,10 @@ final class SessionMonitor {
                 continue
             }
 
-            result.insert(sessionId)
+            let cwd = json["cwd"] as? String ?? ""
+            let startedAtMs = json["startedAt"] as? Double ?? 0
+            let startedAt = Date(timeIntervalSince1970: startedAtMs / 1000.0)
+            result[sessionId] = ActiveSessionMeta(cwd: cwd, startedAt: startedAt)
         }
         return result
     }
@@ -524,7 +556,20 @@ final class SessionMonitor {
                     lastAssistantText = lastText
                 }
 
-                if !toolNames.isEmpty {
+                // Check if AskUserQuestion was called — always counts as asking
+                let hasAskUser = blocks.contains {
+                    $0["type"] as? String == "tool_use" && $0["name"] as? String == "AskUserQuestion"
+                }
+
+                if hasAskUser {
+                    activity = .asking
+                    // Extract the question text from AskUserQuestion input
+                    if let askBlock = blocks.first(where: { $0["name"] as? String == "AskUserQuestion" }),
+                       let input = askBlock["input"] as? [String: Any],
+                       let q = input["question"] as? String {
+                        lastAssistantText = q
+                    }
+                } else if !toolNames.isEmpty {
                     // If no tool_result followed this tool_use, the tool hasn't been
                     // approved/executed yet — the session is waiting for user permission.
                     if !sawToolResult {

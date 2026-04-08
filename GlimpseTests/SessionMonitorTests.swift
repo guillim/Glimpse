@@ -143,9 +143,10 @@ final class SessionMonitorTests: XCTestCase {
         """
         try jsonl.write(to: jsonlFile, atomically: true, encoding: .utf8)
 
+        let meta = SessionMonitor.ActiveSessionMeta(cwd: "/tmp", startedAt: Date())
         let monitor = SessionMonitor(
             claudeProjectsDir: tmpDir,
-            activeSessionIDs: { [sessionID] },
+            activeSessionMetas: { [sessionID: meta] },
             cursorProvider: nil
         )
 
@@ -174,9 +175,11 @@ final class SessionMonitorTests: XCTestCase {
         """
         try jsonl.write(to: jsonlFile, atomically: true, encoding: .utf8)
 
+        let meta = SessionMonitor.ActiveSessionMeta(cwd: "/tmp", startedAt: Date())
+        var activeMetas: [String: SessionMonitor.ActiveSessionMeta] = [sessionID: meta]
         let monitor = SessionMonitor(
             claudeProjectsDir: tmpDir,
-            activeSessionIDs: { [sessionID] },
+            activeSessionMetas: { activeMetas },
             cursorProvider: nil
         )
 
@@ -184,7 +187,8 @@ final class SessionMonitorTests: XCTestCase {
         let sessions1 = monitor.discoverSessions()
         XCTAssertEqual(sessions1.count, 1)
 
-        // Remove the file
+        // Simulate process exit: clear metas and remove JSONL
+        activeMetas.removeAll()
         try FileManager.default.removeItem(at: jsonlFile)
 
         // Second scan: session is gone
