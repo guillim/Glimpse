@@ -42,4 +42,26 @@ final class CharacterGeneratorTests: XCTestCase {
 
         XCTAssertFalse(allMatch, "Two different session IDs should produce different trait combinations")
     }
+
+    // MARK: - Card layout: project name truncation
+
+    func testTruncateProjectName() {
+        // Short names pass through unchanged
+        XCTAssertEqual(CharacterNode.truncateProjectName("glimpse", maxChars: 8), "glimpse")
+        XCTAssertEqual(CharacterNode.truncateProjectName("app", maxChars: 8), "app")
+
+        // Exactly at limit — no truncation
+        XCTAssertEqual(CharacterNode.truncateProjectName("12345678", maxChars: 8), "12345678")
+
+        // Over limit — truncated with ellipsis
+        XCTAssertEqual(CharacterNode.truncateProjectName("123456789", maxChars: 8), "1234567…")
+        XCTAssertEqual(CharacterNode.truncateProjectName("my-very-long-project-name", maxChars: 8), "1234567…".count == 8 ? "my-very…" : "my-very…")
+
+        // Very tight limit
+        XCTAssertEqual(CharacterNode.truncateProjectName("glimpse", maxChars: 4), "gli…")
+        XCTAssertEqual(CharacterNode.truncateProjectName("ab", maxChars: 4), "ab")
+
+        // Edge: maxChars = 3 (minimum useful)
+        XCTAssertEqual(CharacterNode.truncateProjectName("glimpse", maxChars: 3), "gl…")
+    }
 }
