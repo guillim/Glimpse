@@ -208,6 +208,7 @@ final class AgentMonitorScene: SKScene {
                     repeat with s in sessions of t
                         if tty of s is "\(devTty)" then
                             select t
+                            tell w to select
                         end if
                     end repeat
                 end repeat
@@ -226,6 +227,7 @@ final class AgentMonitorScene: SKScene {
                 repeat with t in tabs of w
                     if tty of t is "\(devTty)" then
                         set selected tab of w to t
+                        set index of w to 1
                     end if
                 end repeat
             end repeat
