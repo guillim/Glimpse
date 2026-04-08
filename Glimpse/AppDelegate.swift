@@ -104,13 +104,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
                 let detail: String
                 if isAsking, let q = session.lastAssistantText, !q.isEmpty {
-                    let trimmed = q.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let truncated = trimmed.count > 50 ? String(trimmed.prefix(49)) + "…" : trimmed
+                    let oneLine = q.components(separatedBy: .newlines).first ?? q
+                    let trimmed = oneLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let truncated = trimmed.count > 40 ? String(trimmed.prefix(39)) + "…" : trimmed
                     detail = " — 🔔 \(truncated)"
                 } else if isAsking {
                     detail = " — 🔔"
+                } else if !session.summary.isEmpty {
+                    let oneLine = session.summary.components(separatedBy: .newlines).first ?? session.summary
+                    let trimmed = oneLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let truncated = trimmed.count > 40 ? String(trimmed.prefix(39)) + "…" : trimmed
+                    detail = " — \(truncated)"
                 } else {
-                    detail = session.summary.isEmpty ? "" : " — \(session.summary)"
+                    detail = ""
                 }
 
                 let title = "\(session.projectName)\(detail)"
