@@ -42,6 +42,16 @@ enum OfficeCharacterGenerator {
 
     private static let cache = NSCache<NSString, CGImageBox>()
 
+    // MARK: - Character Assignment (dedup across sessions)
+
+    /// Tracks which character is assigned to each active session to avoid duplicates.
+    private static var assignments: [String: Character] = [:]
+
+    /// Remove assignment when a session departs.
+    static func releaseAssignment(for sessionID: String) {
+        assignments.removeValue(forKey: sessionID)
+    }
+
     // MARK: - Seeded RNG (same as CharacterGenerator)
 
     private static func seed(from sessionID: String) -> UInt64 {
@@ -52,12 +62,29 @@ enum OfficeCharacterGenerator {
         return hash
     }
 
-    static func character(for sessionID: String) -> Character {
+    /// Preferred character from hash (ignoring dedup).
+    private static func preferredCharacter(for sessionID: String) -> Character {
         var s = seed(from: sessionID)
         s = s &* 6364136223846793005 &+ 1442695040888963407
         let roll = Int(s >> 33) % 10
         if roll < 9 { return Character(rawValue: 0)! }  // 90% star character
         return Character(rawValue: 1 + (roll - 9) % (Character.allCases.count - 1))!
+    }
+
+    static func character(for sessionID: String) -> Character {
+        if let existing = assignments[sessionID] { return existing }
+        let preferred = preferredCharacter(for: sessionID)
+        let usedRawValues = Set(assignments.values.map(\.rawValue))
+        let result: Character
+        if !usedRawValues.contains(preferred.rawValue) {
+            result = preferred
+        } else if let unused = Character.allCases.first(where: { !usedRawValues.contains($0.rawValue) }) {
+            result = unused
+        } else {
+            result = preferred  // all characters exhausted, allow duplicate
+        }
+        assignments[sessionID] = result
+        return result
     }
 
     // MARK: - Generate

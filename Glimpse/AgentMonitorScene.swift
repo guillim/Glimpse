@@ -93,6 +93,7 @@ final class AgentMonitorScene: SKScene {
         guard !departingNodes.contains(id) else { return }
         if let node = characterNodes[id] {
             departingNodes.insert(id)
+            CharacterNode.releaseCharacterAssignment(for: id)
             node.animateDisappear { [weak self] in
                 node.removeFromParent()
                 self?.characterNodes.removeValue(forKey: id)

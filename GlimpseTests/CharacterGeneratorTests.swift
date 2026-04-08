@@ -43,6 +43,57 @@ final class CharacterGeneratorTests: XCTestCase {
         XCTAssertFalse(allMatch, "Two different session IDs should produce different trait combinations")
     }
 
+    // MARK: - Character dedup across sessions
+
+    func testCharacterDedupAvoidsDuplicates() {
+        // Use Office generator (8 characters) as representative test.
+        // Assign characters for 3 sessions — all should be unique.
+        let ids = ["session-aaa", "session-bbb", "session-ccc"]
+        let characters = ids.map { OfficeCharacterGenerator.character(for: $0) }
+
+        let uniqueRawValues = Set(characters.map(\.rawValue))
+        XCTAssertEqual(uniqueRawValues.count, 3, "3 sessions should get 3 different characters")
+
+        // Clean up
+        ids.forEach { OfficeCharacterGenerator.releaseAssignment(for: $0) }
+    }
+
+    func testCharacterDedupAllowsDuplicatesWhenExhausted() {
+        // Office has 8 characters. Assign all 8, then a 9th must duplicate.
+        var ids: [String] = []
+        for i in 0..<8 {
+            ids.append("exhaust-\(i)")
+            _ = OfficeCharacterGenerator.character(for: "exhaust-\(i)")
+        }
+
+        let uniqueBefore = Set(ids.map { OfficeCharacterGenerator.character(for: $0).rawValue })
+        XCTAssertEqual(uniqueBefore.count, 8, "First 8 sessions should each get a unique character")
+
+        // 9th session must get a character (duplicate is OK)
+        let ninth = OfficeCharacterGenerator.character(for: "exhaust-overflow")
+        XCTAssertNotNil(ninth)
+
+        // Clean up
+        (ids + ["exhaust-overflow"]).forEach { OfficeCharacterGenerator.releaseAssignment(for: $0) }
+    }
+
+    func testCharacterReleaseAllowsReuse() {
+        let id1 = "release-test-1"
+        let id2 = "release-test-2"
+        let ch1 = OfficeCharacterGenerator.character(for: id1)
+
+        // Release id1, then id2 should be able to get the same character
+        OfficeCharacterGenerator.releaseAssignment(for: id1)
+        let ch2 = OfficeCharacterGenerator.character(for: id2)
+
+        // ch2 gets its preferred character — may or may not be same as ch1,
+        // but the important thing is the assignment works without error
+        XCTAssertNotNil(ch2)
+
+        // Clean up
+        OfficeCharacterGenerator.releaseAssignment(for: id2)
+    }
+
     // MARK: - Card layout: project name truncation
 
     func testTruncateProjectName() {

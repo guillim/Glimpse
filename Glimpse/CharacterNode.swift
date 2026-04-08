@@ -789,6 +789,16 @@ final class CharacterNode: SKNode {
 
     // MARK: - Style Support
 
+    /// Release character assignment from all generators when a session departs.
+    static func releaseCharacterAssignment(for sessionID: String) {
+        StarWarsCharacterGenerator.releaseAssignment(for: sessionID)
+        DemonSlayerCharacterGenerator.releaseAssignment(for: sessionID)
+        OnePieceCharacterGenerator.releaseAssignment(for: sessionID)
+        DragonBallCharacterGenerator.releaseAssignment(for: sessionID)
+        OfficeCharacterGenerator.releaseAssignment(for: sessionID)
+        MarvelCharacterGenerator.releaseAssignment(for: sessionID)
+    }
+
     /// Build a texture for the given session using the current character style.
     static func makeTexture(sessionID: String, size: CGFloat) -> SKTexture {
         let cgImage: CGImage?
