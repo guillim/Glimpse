@@ -44,15 +44,13 @@ enum OfficeCharacterGenerator {
 
     // MARK: - Character Assignment (dedup across sessions)
 
-    /// Tracks which character is assigned to each active session to avoid duplicates.
     private static var assignments: [String: Character] = [:]
 
-    /// Remove assignment when a session departs.
     static func releaseAssignment(for sessionID: String) {
         assignments.removeValue(forKey: sessionID)
     }
 
-    // MARK: - Seeded RNG (same as CharacterGenerator)
+    // MARK: - Seeded RNG
 
     private static func seed(from sessionID: String) -> UInt64 {
         var hash: UInt64 = 5381
@@ -62,12 +60,11 @@ enum OfficeCharacterGenerator {
         return hash
     }
 
-    /// Preferred character from hash (ignoring dedup).
     private static func preferredCharacter(for sessionID: String) -> Character {
         var s = seed(from: sessionID)
         s = s &* 6364136223846793005 &+ 1442695040888963407
         let roll = Int(s >> 33) % 10
-        if roll < 9 { return Character(rawValue: 0)! }  // 90% star character
+        if roll < 9 { return Character(rawValue: 0)! }
         return Character(rawValue: 1 + (roll - 9) % (Character.allCases.count - 1))!
     }
 
@@ -81,7 +78,7 @@ enum OfficeCharacterGenerator {
         } else if let unused = Character.allCases.first(where: { !usedRawValues.contains($0.rawValue) }) {
             result = unused
         } else {
-            result = preferred  // all characters exhausted, allow duplicate
+            result = preferred
         }
         assignments[sessionID] = result
         return result
@@ -128,7 +125,7 @@ enum OfficeCharacterGenerator {
 
     // MARK: - Drawing Helpers
 
-    private static let ol: CGFloat = 1.5  // base outline width
+    private static let ol: CGFloat = 1.5
 
     private static func outlinedEllipse(_ ctx: CGContext, rect: CGRect, fill: CGColor, outline: CGFloat) {
         ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
@@ -144,20 +141,8 @@ enum OfficeCharacterGenerator {
         ctx.fill(rect)
     }
 
-    private static func outlinedRoundRect(_ ctx: CGContext, rect: CGRect, fill: CGColor, outline: CGFloat, radius: CGFloat) {
-        let outerPath = CGPath(roundedRect: rect.insetBy(dx: -outline, dy: -outline),
-                               cornerWidth: radius + outline, cornerHeight: radius + outline, transform: nil)
-        ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-        ctx.addPath(outerPath)
-        ctx.fillPath()
-        let innerPath = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
-        ctx.setFillColor(fill)
-        ctx.addPath(innerPath)
-        ctx.fillPath()
-    }
-
-    /// Draw a radial highlight on the head for depth.
-    private static func headHighlight(_ ctx: CGContext, headRect: CGRect, cx: CGFloat, headY: CGFloat, headR: CGFloat) {
+    private static func headHighlight(_ ctx: CGContext, cx: CGFloat, headY: CGFloat, headR: CGFloat) {
+        let headRect = CGRect(x: cx - headR, y: headY - headR, width: headR * 2, height: headR * 2)
         guard let gradient = CGGradient(
             colorsSpace: CGColorSpaceCreateDeviceRGB(),
             colors: [
@@ -178,62 +163,18 @@ enum OfficeCharacterGenerator {
         ctx.restoreGState()
     }
 
-    /// Simple chibi eyes — white sclera, dark pupil, highlight.
-    private static func drawSimpleEyes(_ ctx: CGContext, cx: CGFloat, headY: CGFloat, headR: CGFloat, size s: CGFloat, spacing: CGFloat = 0.4) {
-        let eyeY = headY - headR * 0.05
-        let sp = headR * spacing
-        let ew = headR * 0.26, eh = headR * 0.33
-
-        for dir: CGFloat in [-1, 1] {
-            let ex = cx + dir * sp
-            // Dark socket
-            ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ew - 1.5, y: eyeY - eh - 1.5, width: (ew + 1.5) * 2, height: (eh + 1.5) * 2))
-            // White sclera
-            ctx.setFillColor(CGColor(gray: 1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ew, y: eyeY - eh, width: ew * 2, height: eh * 2))
-            // Dark pupil
-            let pw = ew * 0.55, ph = eh * 0.55
-            ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - pw, y: eyeY - ph, width: pw * 2, height: ph * 2))
-            // Highlight
-            let hlR = ew * 0.28
-            ctx.setFillColor(CGColor(gray: 1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex + ew * 0.2 - hlR / 2, y: eyeY + eh * 0.25 - hlR / 2, width: hlR, height: hlR))
-        }
-    }
-
-    /// Simple smile mouth.
-    private static func drawSmile(_ ctx: CGContext, cx: CGFloat, headY: CGFloat, headR: CGFloat, size s: CGFloat) {
-        let mouthY = headY - headR * 0.4
-        ctx.setStrokeColor(CGColor(gray: 0.1, alpha: 1))
-        ctx.setLineWidth(max(s * 0.018, 1.2))
-        ctx.setLineCap(.round)
-        ctx.addArc(center: CGPoint(x: cx, y: mouthY + headR * 0.1),
-                   radius: headR * 0.15,
-                   startAngle: -.pi * 0.15,
-                   endAngle: -.pi * 0.85,
-                   clockwise: true)
-        ctx.strokePath()
-        ctx.setLineCap(.butt)
-    }
-
-    /// Drop shadow ellipse beneath character.
     private static func drawShadow(_ ctx: CGContext, cx: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat) {
         ctx.setFillColor(CGColor(gray: 0, alpha: 0.2))
         ctx.fillEllipse(in: CGRect(x: cx - w / 2, y: y, width: w, height: h))
     }
 
-    /// Stubby chibi feet.
     private static func drawFeet(_ ctx: CGContext, cx: CGFloat, footY: CGFloat, bodyW: CGFloat, fill: CGColor, size s: CGFloat) {
         for dir: CGFloat in [-1, 1] {
             let fx = cx + dir * bodyW * 0.35
-            let footRect = CGRect(x: fx - s * 0.045, y: footY - s * 0.025, width: s * 0.09, height: s * 0.05)
-            outlinedEllipse(ctx, rect: footRect, fill: fill, outline: ol)
+            outlinedEllipse(ctx, rect: CGRect(x: fx - s * 0.045, y: footY - s * 0.025, width: s * 0.09, height: s * 0.05), fill: fill, outline: ol)
         }
     }
 
-    /// Stubby chibi arms.
     private static func drawArms(_ ctx: CGContext, cx: CGFloat, bodyY: CGFloat, bodyW: CGFloat, bodyH: CGFloat, fill: CGColor, size s: CGFloat) {
         for dir: CGFloat in [-1, 1] {
             let ax = cx + dir * (bodyW / 2 + s * 0.04)
@@ -241,618 +182,413 @@ enum OfficeCharacterGenerator {
             ctx.saveGState()
             ctx.translateBy(x: ax, y: ay)
             ctx.rotate(by: dir * 0.3)
-            let armRect = CGRect(x: -s * 0.03, y: -s * 0.055, width: s * 0.06, height: s * 0.11)
-            outlinedEllipse(ctx, rect: armRect, fill: fill, outline: ol)
+            outlinedEllipse(ctx, rect: CGRect(x: -s * 0.03, y: -s * 0.055, width: s * 0.06, height: s * 0.11), fill: fill, outline: ol)
             ctx.restoreGState()
         }
     }
 
+    /// Eyes with per-character customization.
+    private static func drawEyes(
+        _ ctx: CGContext, cx: CGFloat, eyeY: CGFloat,
+        spacing: CGFloat, ew: CGFloat, eh: CGFloat,
+        skin: CGColor, halfLid: CGFloat = 0,
+        pupilScale: CGFloat = 0.55,
+        pupilOffsets: [(CGFloat, CGFloat)]? = nil
+    ) {
+        for (i, dir): (Int, CGFloat) in [(0, -1.0 as CGFloat), (1, 1.0 as CGFloat)] {
+            let ex = cx + dir * spacing
+            ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
+            ctx.fillEllipse(in: CGRect(x: ex - ew - 1.5, y: eyeY - eh - 1.5, width: (ew + 1.5) * 2, height: (eh + 1.5) * 2))
+            ctx.setFillColor(CGColor(gray: 1, alpha: 1))
+            ctx.fillEllipse(in: CGRect(x: ex - ew, y: eyeY - eh, width: ew * 2, height: eh * 2))
+            let pox = pupilOffsets?[i].0 ?? 0
+            let poy = pupilOffsets?[i].1 ?? 0
+            let pw = ew * pupilScale, ph = eh * pupilScale
+            ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
+            ctx.fillEllipse(in: CGRect(x: ex + pox - pw, y: eyeY + poy - ph, width: pw * 2, height: ph * 2))
+            let hlR = ew * 0.28
+            ctx.setFillColor(CGColor(gray: 1, alpha: 1))
+            ctx.fillEllipse(in: CGRect(x: ex + pox + ew * 0.18 - hlR / 2, y: eyeY + poy + eh * 0.22 - hlR / 2, width: hlR, height: hlR))
+            if halfLid > 0 {
+                ctx.setFillColor(skin)
+                let lidH = eh * 2 * halfLid
+                ctx.fillEllipse(in: CGRect(x: ex - ew * 1.15, y: eyeY + eh - lidH * 0.15, width: ew * 2.3, height: lidH))
+            }
+        }
+    }
+
+    /// Rectangular glasses (Dwight-style).
+    private static func drawRectGlasses(_ ctx: CGContext, cx: CGFloat, gy: CGFloat, headR: CGFloat, s: CGFloat) {
+        ctx.setStrokeColor(CGColor(gray: 0.15, alpha: 1))
+        ctx.setLineWidth(s * 0.02)
+        for dir: CGFloat in [-1, 1] {
+            let gx = cx + dir * headR * 0.34
+            let gw = headR * 0.28, gh = headR * 0.20
+            ctx.stroke(CGRect(x: gx - gw, y: gy - gh, width: gw * 2, height: gh * 2))
+        }
+        ctx.move(to: CGPoint(x: cx - headR * 0.06, y: gy))
+        ctx.addLine(to: CGPoint(x: cx + headR * 0.06, y: gy))
+        ctx.strokePath()
+    }
+
+    /// Round glasses (Stanley-style).
+    private static func drawRoundGlasses(_ ctx: CGContext, cx: CGFloat, gy: CGFloat, headR: CGFloat, s: CGFloat) {
+        ctx.setStrokeColor(CGColor(gray: 0.15, alpha: 1))
+        ctx.setLineWidth(s * 0.016)
+        for dir: CGFloat in [-1, 1] {
+            let gx = cx + dir * headR * 0.33
+            let gr = headR * 0.22
+            ctx.addEllipse(in: CGRect(x: gx - gr, y: gy - gr, width: gr * 2, height: gr * 2))
+        }
+        ctx.strokePath()
+        ctx.move(to: CGPoint(x: cx - headR * 0.11, y: gy + headR * 0.02))
+        ctx.addLine(to: CGPoint(x: cx + headR * 0.11, y: gy + headR * 0.02))
+        ctx.strokePath()
+    }
+
+    /// Tie shape.
+    private static func drawTie(_ ctx: CGContext, cx: CGFloat, bodyY: CGFloat, bodyH: CGFloat, color: CGColor, s: CGFloat) {
+        let tieW = s * 0.024
+        ctx.setFillColor(color)
+        ctx.move(to: CGPoint(x: cx - tieW, y: bodyY + bodyH * 0.33))
+        ctx.addLine(to: CGPoint(x: cx + tieW, y: bodyY + bodyH * 0.33))
+        ctx.addLine(to: CGPoint(x: cx + tieW * 0.7, y: bodyY - bodyH * 0.08))
+        ctx.addLine(to: CGPoint(x: cx, y: bodyY - bodyH * 0.18))
+        ctx.addLine(to: CGPoint(x: cx - tieW * 0.7, y: bodyY - bodyH * 0.08))
+        ctx.fillPath()
+    }
+
+    /// Shirt collar V.
+    private static func drawCollar(_ ctx: CGContext, cx: CGFloat, bodyY: CGFloat, bodyW: CGFloat, bodyH: CGFloat, color: CGColor) {
+        ctx.setFillColor(color)
+        ctx.move(to: CGPoint(x: cx - bodyW * 0.16, y: bodyY + bodyH * 0.42))
+        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.16, y: bodyY + bodyH * 0.42))
+        ctx.addLine(to: CGPoint(x: cx, y: bodyY + bodyH * 0.05))
+        ctx.fillPath()
+    }
+
+    // =========================================================================
+    // MARK: - Character Drawings
+    // =========================================================================
+
     // MARK: - Michael Scott
 
     private static func drawMichael(_ ctx: CGContext, size s: CGFloat) {
-        let cx = s / 2
-        let headR = s * 0.30
-        let headY = s * 0.60
-        let bodyW = s * 0.28, bodyH = s * 0.22
-        let bodyY = s * 0.25
-
-        let skin = CGColor(red: 0.92, green: 0.80, blue: 0.70, alpha: 1)
-        let suit = CGColor(red: 0.12, green: 0.15, blue: 0.28, alpha: 1)
-        let shirt = CGColor(red: 0.55, green: 0.65, blue: 0.82, alpha: 1)
-        let tie = CGColor(red: 0.78, green: 0.18, blue: 0.18, alpha: 1)
-        let shoe = CGColor(gray: 0.15, alpha: 1)
-        let hair = CGColor(red: 0.32, green: 0.22, blue: 0.14, alpha: 1)
+        let cx = s / 2, headR = s * 0.34, headY = s * 0.62
+        let bodyW = s * 0.28, bodyH = s * 0.22, bodyY = s * 0.25
+        let skin = CGColor(red: 0.93, green: 0.81, blue: 0.71, alpha: 1)
+        let suit = CGColor(red: 0.10, green: 0.12, blue: 0.25, alpha: 1)
+        let shirt = CGColor(red: 0.58, green: 0.68, blue: 0.85, alpha: 1)
+        let hair = CGColor(red: 0.25, green: 0.18, blue: 0.10, alpha: 1)
 
         drawShadow(ctx, cx: cx, y: bodyY - bodyH / 2 - s * 0.08, w: bodyW, h: s * 0.04)
-        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: shoe, size: s)
-
-        // Body — dark navy suit
-        let bodyRect = CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH)
-        outlinedEllipse(ctx, rect: bodyRect, fill: suit, outline: ol)
-
-        // Shirt collar V
-        ctx.setFillColor(shirt)
-        ctx.move(to: CGPoint(x: cx - bodyW * 0.15, y: bodyY + bodyH * 0.4))
-        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.15, y: bodyY + bodyH * 0.4))
-        ctx.addLine(to: CGPoint(x: cx, y: bodyY + bodyH * 0.05))
-        ctx.fillPath()
-
-        // Red tie
-        ctx.setFillColor(tie)
-        let tieW = s * 0.025
-        ctx.move(to: CGPoint(x: cx - tieW, y: bodyY + bodyH * 0.35))
-        ctx.addLine(to: CGPoint(x: cx + tieW, y: bodyY + bodyH * 0.35))
-        ctx.addLine(to: CGPoint(x: cx + tieW * 0.7, y: bodyY - bodyH * 0.1))
-        ctx.addLine(to: CGPoint(x: cx, y: bodyY - bodyH * 0.2))
-        ctx.addLine(to: CGPoint(x: cx - tieW * 0.7, y: bodyY - bodyH * 0.1))
-        ctx.fillPath()
-
+        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: CGColor(gray: 0.15, alpha: 1), size: s)
+        outlinedEllipse(ctx, rect: CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH), fill: suit, outline: ol)
+        drawCollar(ctx, cx: cx, bodyY: bodyY, bodyW: bodyW, bodyH: bodyH, color: shirt)
+        drawTie(ctx, cx: cx, bodyY: bodyY, bodyH: bodyH, color: CGColor(red: 0.80, green: 0.18, blue: 0.18, alpha: 1), s: s)
         drawArms(ctx, cx: cx, bodyY: bodyY, bodyW: bodyW, bodyH: bodyH, fill: suit, size: s)
 
         // Head
         let headRect = CGRect(x: cx - headR, y: headY - headR, width: headR * 2, height: headR * 2)
         outlinedEllipse(ctx, rect: headRect, fill: skin, outline: ol)
-        headHighlight(ctx, headRect: headRect, cx: cx, headY: headY, headR: headR)
+        headHighlight(ctx, cx: cx, headY: headY, headR: headR)
 
-        // Hair — short dark brown, neatly combed with side part and gelled-up front
+        // Hair — short dark brown, combed right with volume on top
         ctx.saveGState()
-        ctx.addEllipse(in: headRect)
-        ctx.clip()
+        ctx.addEllipse(in: headRect); ctx.clip()
         ctx.setFillColor(hair)
-        // Main hair mass covering top of head
-        ctx.fill(CGRect(x: cx - headR, y: headY + headR * 0.22, width: headR * 2, height: headR * 0.82))
-        // Side part line — subtle darker gap on left side
-        ctx.setFillColor(CGColor(red: 0.22, green: 0.14, blue: 0.08, alpha: 0.6))
-        ctx.fill(CGRect(x: cx - headR * 0.18, y: headY + headR * 0.50, width: headR * 0.04, height: headR * 0.40))
+        ctx.fill(CGRect(x: cx - headR, y: headY + headR * 0.20, width: headR * 2, height: headR * 0.85))
+        // Side part
+        ctx.setFillColor(CGColor(red: 0.18, green: 0.12, blue: 0.06, alpha: 0.5))
+        ctx.fill(CGRect(x: cx - headR * 0.20, y: headY + headR * 0.45, width: headR * 0.04, height: headR * 0.40))
         ctx.restoreGState()
-        // Gelled-up volume at front — short spiky front, combed to the right
+        // Volume bump at front
         ctx.setFillColor(hair)
-        ctx.move(to: CGPoint(x: cx - headR * 0.55, y: headY + headR * 0.50))
-        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.55, y: headY + headR * 0.48),
-                         control: CGPoint(x: cx + headR * 0.05, y: headY + headR * 1.05))
-        ctx.addLine(to: CGPoint(x: cx + headR * 0.55, y: headY + headR * 0.38))
-        ctx.addLine(to: CGPoint(x: cx - headR * 0.55, y: headY + headR * 0.40))
+        ctx.move(to: CGPoint(x: cx - headR * 0.50, y: headY + headR * 0.48))
+        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.60, y: headY + headR * 0.45),
+                         control: CGPoint(x: cx + headR * 0.05, y: headY + headR * 0.95))
+        ctx.addLine(to: CGPoint(x: cx + headR * 0.60, y: headY + headR * 0.35))
+        ctx.addLine(to: CGPoint(x: cx - headR * 0.50, y: headY + headR * 0.38))
         ctx.fillPath()
-        // Hair sits tight on sides — no sticking out
-        ctx.setFillColor(hair)
+
+        // Eyes — big and round (eager)
+        let eyeY = headY - headR * 0.05
+        drawEyes(ctx, cx: cx, eyeY: eyeY, spacing: headR * 0.36, ew: headR * 0.24, eh: headR * 0.30, skin: skin)
+
+        // Eyebrows
+        ctx.setStrokeColor(CGColor(red: 0.25, green: 0.16, blue: 0.08, alpha: 0.7))
+        ctx.setLineWidth(s * 0.012); ctx.setLineCap(.round)
         for dir: CGFloat in [-1, 1] {
-            let sideX = cx + dir * headR * 0.75
-            ctx.fillEllipse(in: CGRect(x: sideX - headR * 0.20, y: headY - headR * 0.05,
-                                       width: headR * 0.40, height: headR * 0.45))
+            let bx = cx + dir * headR * 0.36
+            ctx.move(to: CGPoint(x: bx - headR * 0.12, y: eyeY + headR * 0.28))
+            ctx.addLine(to: CGPoint(x: bx + headR * 0.12, y: eyeY + headR * 0.30))
         }
+        ctx.strokePath(); ctx.setLineCap(.butt)
 
-        // Eyebrows — simple straight lines, slightly raised
-        ctx.setStrokeColor(CGColor(red: 0.28, green: 0.18, blue: 0.10, alpha: 0.8))
-        ctx.setLineWidth(s * 0.013)
-        ctx.setLineCap(.round)
-        for dir: CGFloat in [-1, 1] {
-            let bx = cx + dir * headR * 0.35
-            let by = headY + headR * 0.22
-            ctx.move(to: CGPoint(x: bx - headR * 0.12, y: by))
-            ctx.addLine(to: CGPoint(x: bx + headR * 0.12, y: by + headR * 0.02))
-        }
-        ctx.strokePath()
-        ctx.setLineCap(.butt)
-
-        // Wide eager eyes — big and round (always looks excited)
-        drawSimpleEyes(ctx, cx: cx, headY: headY, headR: headR, size: s, spacing: 0.35)
-
-        // Goofy wide grin showing teeth — Michael's signature over-eager smile
-        let mouthY = headY - headR * 0.42
-        let mouthW = headR * 0.38
-        let mouthH = headR * 0.16
-        // Dark mouth opening
-        ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-        ctx.fillEllipse(in: CGRect(x: cx - mouthW, y: mouthY - mouthH, width: mouthW * 2, height: mouthH * 2))
-        // White teeth — solid row
+        // Wide toothy grin — open mouth with white teeth band
+        let my = headY - headR * 0.45, mw = headR * 0.32, mh = headR * 0.14
+        ctx.setFillColor(CGColor(red: 0.35, green: 0.10, blue: 0.08, alpha: 1))
+        ctx.fillEllipse(in: CGRect(x: cx - mw, y: my - mh, width: mw * 2, height: mh * 2))
         ctx.setFillColor(CGColor(gray: 0.96, alpha: 1))
-        ctx.fill(CGRect(x: cx - mouthW * 0.75, y: mouthY, width: mouthW * 1.5, height: mouthH * 0.85))
+        ctx.fill(CGRect(x: cx - mw * 0.80, y: my + mh * 0.05, width: mw * 1.60, height: mh * 0.70))
     }
 
     // MARK: - Dwight Schrute
 
     private static func drawDwight(_ ctx: CGContext, size s: CGFloat) {
-        let cx = s / 2
-        let headR = s * 0.32
-        let headY = s * 0.62
-        let bodyW = s * 0.28, bodyH = s * 0.22
-        let bodyY = s * 0.25
-
+        let cx = s / 2, headR = s * 0.34, headY = s * 0.63
+        let bodyW = s * 0.28, bodyH = s * 0.22, bodyY = s * 0.25
         let skin = CGColor(red: 0.92, green: 0.82, blue: 0.72, alpha: 1)
-        let suitBrown = CGColor(red: 0.42, green: 0.32, blue: 0.18, alpha: 1)
-        let mustardShirt = CGColor(red: 0.78, green: 0.68, blue: 0.22, alpha: 1)
-        let beetTie = CGColor(red: 0.60, green: 0.10, blue: 0.15, alpha: 1)
-        let shoe = CGColor(gray: 0.18, alpha: 1)
-        let hair = CGColor(red: 0.35, green: 0.25, blue: 0.15, alpha: 1)
+        let shirt = CGColor(red: 0.78, green: 0.68, blue: 0.22, alpha: 1)  // mustard
+        let suitJacket = CGColor(red: 0.42, green: 0.32, blue: 0.18, alpha: 1)
+        let hair = CGColor(red: 0.32, green: 0.22, blue: 0.12, alpha: 1)
 
         drawShadow(ctx, cx: cx, y: bodyY - bodyH / 2 - s * 0.08, w: bodyW, h: s * 0.04)
-        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: shoe, size: s)
+        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: CGColor(gray: 0.18, alpha: 1), size: s)
+        outlinedEllipse(ctx, rect: CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH), fill: suitJacket, outline: ol)
+        drawCollar(ctx, cx: cx, bodyY: bodyY, bodyW: bodyW, bodyH: bodyH, color: shirt)
+        drawTie(ctx, cx: cx, bodyY: bodyY, bodyH: bodyH, color: CGColor(red: 0.58, green: 0.08, blue: 0.12, alpha: 1), s: s)
+        drawArms(ctx, cx: cx, bodyY: bodyY, bodyW: bodyW, bodyH: bodyH, fill: suitJacket, size: s)
 
-        // Body — brown suit
-        let bodyRect = CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH)
-        outlinedEllipse(ctx, rect: bodyRect, fill: suitBrown, outline: ol)
-
-        // Mustard shirt collar
-        ctx.setFillColor(mustardShirt)
-        ctx.move(to: CGPoint(x: cx - bodyW * 0.18, y: bodyY + bodyH * 0.4))
-        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.18, y: bodyY + bodyH * 0.4))
-        ctx.addLine(to: CGPoint(x: cx, y: bodyY + bodyH * 0.05))
-        ctx.fillPath()
-
-        // Beet-red tie
-        ctx.setFillColor(beetTie)
-        let tieW = s * 0.022
-        ctx.move(to: CGPoint(x: cx - tieW, y: bodyY + bodyH * 0.32))
-        ctx.addLine(to: CGPoint(x: cx + tieW, y: bodyY + bodyH * 0.32))
-        ctx.addLine(to: CGPoint(x: cx + tieW * 0.6, y: bodyY - bodyH * 0.1))
-        ctx.addLine(to: CGPoint(x: cx, y: bodyY - bodyH * 0.2))
-        ctx.addLine(to: CGPoint(x: cx - tieW * 0.6, y: bodyY - bodyH * 0.1))
-        ctx.fillPath()
-
-        // ID badge clipped to pocket — Dunder Mifflin
-        let badgeX = cx + bodyW * 0.22
-        let badgeY = bodyY + bodyH * 0.08
-        let badgeW = s * 0.04, badgeH = s * 0.05
-        // Lanyard line from neck
-        ctx.setStrokeColor(CGColor(red: 0.15, green: 0.30, blue: 0.55, alpha: 1))
-        ctx.setLineWidth(s * 0.006)
-        ctx.move(to: CGPoint(x: cx + bodyW * 0.08, y: bodyY + bodyH * 0.40))
-        ctx.addLine(to: CGPoint(x: badgeX, y: badgeY + badgeH / 2))
-        ctx.strokePath()
-        // Badge card
-        outlinedRoundRect(ctx, rect: CGRect(x: badgeX - badgeW / 2, y: badgeY - badgeH / 2, width: badgeW, height: badgeH),
-                          fill: CGColor(gray: 0.95, alpha: 1), outline: ol * 0.6, radius: s * 0.004)
-        // Blue stripe on badge
-        ctx.setFillColor(CGColor(red: 0.15, green: 0.30, blue: 0.55, alpha: 1))
-        ctx.fill(CGRect(x: badgeX - badgeW * 0.35, y: badgeY + badgeH * 0.15, width: badgeW * 0.7, height: badgeH * 0.15))
-
-        drawArms(ctx, cx: cx, bodyY: bodyY, bodyW: bodyW, bodyH: bodyH, fill: suitBrown, size: s)
-
-        // Head — slightly large forehead
+        // Head
         let headRect = CGRect(x: cx - headR, y: headY - headR, width: headR * 2, height: headR * 2)
         outlinedEllipse(ctx, rect: headRect, fill: skin, outline: ol)
-        headHighlight(ctx, headRect: headRect, cx: cx, headY: headY, headR: headR)
+        headHighlight(ctx, cx: cx, headY: headY, headR: headR)
 
-        // Center-parted bowl cut with pointed sideburns
+        // Bowl cut — center part, hair hangs straight down on sides
         ctx.saveGState()
-        ctx.addEllipse(in: headRect)
-        ctx.clip()
+        ctx.addEllipse(in: headRect); ctx.clip()
         ctx.setFillColor(hair)
-        // Full hair covering top
-        ctx.fill(CGRect(x: cx - headR, y: headY + headR * 0.10, width: headR * 2, height: headR * 0.95))
-        // Center part — skin showing through
+        ctx.fill(CGRect(x: cx - headR, y: headY + headR * 0.05, width: headR * 2, height: headR))
+        // Center part
         ctx.setFillColor(skin)
-        ctx.move(to: CGPoint(x: cx - headR * 0.03, y: headY + headR * 1.0))
-        ctx.addLine(to: CGPoint(x: cx + headR * 0.03, y: headY + headR * 1.0))
-        ctx.addLine(to: CGPoint(x: cx + headR * 0.08, y: headY + headR * 0.50))
-        ctx.addLine(to: CGPoint(x: cx - headR * 0.08, y: headY + headR * 0.50))
+        ctx.move(to: CGPoint(x: cx - headR * 0.04, y: headY + headR * 1.02))
+        ctx.addLine(to: CGPoint(x: cx + headR * 0.04, y: headY + headR * 1.02))
+        ctx.addLine(to: CGPoint(x: cx + headR * 0.12, y: headY + headR * 0.45))
+        ctx.addLine(to: CGPoint(x: cx - headR * 0.12, y: headY + headR * 0.45))
         ctx.fillPath()
-        // Bowl cut fringe — rounded bottom edge, sits low on forehead
-        ctx.setFillColor(skin)
-        ctx.fillEllipse(in: CGRect(x: cx - headR * 1.2, y: headY - headR * 0.20, width: headR * 2.4, height: headR * 0.52))
+        // Bowl fringe cutout
+        ctx.fillEllipse(in: CGRect(x: cx - headR * 1.2, y: headY - headR * 0.30, width: headR * 2.4, height: headR * 0.60))
         ctx.restoreGState()
-        // Pointed sideburns extending below head circle
-        ctx.setFillColor(hair)
-        for dir: CGFloat in [-1, 1] {
-            let sbX = cx + dir * headR * 0.82
-            ctx.move(to: CGPoint(x: sbX - headR * 0.08, y: headY + headR * 0.05))
-            ctx.addLine(to: CGPoint(x: sbX + headR * 0.08, y: headY + headR * 0.05))
-            ctx.addLine(to: CGPoint(x: sbX + headR * 0.03, y: headY - headR * 0.22))
-            ctx.addLine(to: CGPoint(x: sbX - headR * 0.03, y: headY - headR * 0.22))
-            ctx.fillPath()
-        }
 
-        // Thick rectangular wire-frame glasses
-        ctx.setStrokeColor(CGColor(gray: 0.15, alpha: 1))
-        ctx.setLineWidth(s * 0.02)
-        for dir: CGFloat in [-1, 1] {
-            let gx = cx + dir * headR * 0.33
-            let gy = headY + headR * 0.0
-            let gw = headR * 0.30, gh = headR * 0.20
-            ctx.stroke(CGRect(x: gx - gw, y: gy - gh, width: gw * 2, height: gh * 2))
-        }
-        // Bridge
-        ctx.setLineWidth(s * 0.015)
-        ctx.move(to: CGPoint(x: cx - headR * 0.03, y: headY + headR * 0.02))
-        ctx.addLine(to: CGPoint(x: cx + headR * 0.03, y: headY + headR * 0.02))
-        ctx.strokePath()
-        // Temple arms extending to sides
-        for dir: CGFloat in [-1, 1] {
-            ctx.move(to: CGPoint(x: cx + dir * (headR * 0.33 + headR * 0.30), y: headY))
-            ctx.addLine(to: CGPoint(x: cx + dir * headR * 0.82, y: headY - headR * 0.02))
-        }
-        ctx.strokePath()
+        // Rectangular glasses
+        let gy = headY + headR * 0.02
+        drawRectGlasses(ctx, cx: cx, gy: gy, headR: headR, s: s)
 
-        // Squinting intense eyes — smaller, narrower
+        // Squinting eyes behind glasses
         let eyeY = headY - headR * 0.02
-        let sp = headR * 0.33
-        let ew = headR * 0.22, eh = headR * 0.18
-        for dir: CGFloat in [-1, 1] {
-            let ex = cx + dir * sp
-            ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ew - 1.5, y: eyeY - eh - 1.5, width: (ew + 1.5) * 2, height: (eh + 1.5) * 2))
-            ctx.setFillColor(CGColor(gray: 1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ew, y: eyeY - eh, width: ew * 2, height: eh * 2))
-            // Intense small pupils
-            let pw = ew * 0.50, ph = eh * 0.55
-            ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - pw, y: eyeY - ph, width: pw * 2, height: ph * 2))
-            let hlR = ew * 0.25
-            ctx.setFillColor(CGColor(gray: 1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex + ew * 0.15 - hlR / 2, y: eyeY + eh * 0.2 - hlR / 2, width: hlR, height: hlR))
-            // Heavy upper eyelid — squinting look
-            ctx.setStrokeColor(CGColor(gray: 0.1, alpha: 1))
-            ctx.setLineWidth(s * 0.012)
-            ctx.move(to: CGPoint(x: ex - ew * 0.9, y: eyeY + eh * 0.3))
-            ctx.addQuadCurve(to: CGPoint(x: ex + ew * 0.9, y: eyeY + eh * 0.3),
-                             control: CGPoint(x: ex, y: eyeY + eh * 0.75))
-            ctx.strokePath()
-        }
+        drawEyes(ctx, cx: cx, eyeY: eyeY, spacing: headR * 0.34, ew: headR * 0.20, eh: headR * 0.22, skin: skin, halfLid: 0.35, pupilScale: 0.50)
 
-        // Angry/intense eyebrows — angled down toward center
-        ctx.setStrokeColor(CGColor(red: 0.30, green: 0.20, blue: 0.12, alpha: 0.9))
-        ctx.setLineWidth(s * 0.016)
-        ctx.setLineCap(.round)
+        // Angry eyebrows — angled inward
+        ctx.setStrokeColor(CGColor(red: 0.28, green: 0.18, blue: 0.10, alpha: 0.85))
+        ctx.setLineWidth(s * 0.015); ctx.setLineCap(.round)
         for dir: CGFloat in [-1, 1] {
-            let bx = cx + dir * headR * 0.33
-            let by = headY + headR * 0.22
-            ctx.move(to: CGPoint(x: bx + dir * headR * 0.15, y: by + headR * 0.06))
-            ctx.addLine(to: CGPoint(x: bx - dir * headR * 0.10, y: by - headR * 0.02))
+            let bx = cx + dir * headR * 0.34
+            ctx.move(to: CGPoint(x: bx + dir * headR * 0.14, y: eyeY + headR * 0.30))
+            ctx.addLine(to: CGPoint(x: bx - dir * headR * 0.10, y: eyeY + headR * 0.24))
         }
-        ctx.strokePath()
-        ctx.setLineCap(.butt)
+        ctx.strokePath(); ctx.setLineCap(.butt)
 
-        // Stern flat mouth with slight downturn
+        // Stern flat mouth
+        let my = headY - headR * 0.42
         ctx.setStrokeColor(CGColor(gray: 0.1, alpha: 1))
-        ctx.setLineWidth(max(s * 0.016, 1.2))
-        ctx.setLineCap(.round)
-        let mouthY = headY - headR * 0.42
-        ctx.move(to: CGPoint(x: cx - headR * 0.16, y: mouthY))
-        ctx.addLine(to: CGPoint(x: cx + headR * 0.16, y: mouthY))
+        ctx.setLineWidth(max(s * 0.016, 1.2)); ctx.setLineCap(.round)
+        ctx.move(to: CGPoint(x: cx - headR * 0.15, y: my))
+        ctx.addLine(to: CGPoint(x: cx + headR * 0.15, y: my))
         ctx.strokePath()
-        ctx.setLineWidth(max(s * 0.012, 1.0))
-        ctx.move(to: CGPoint(x: cx - headR * 0.16, y: mouthY))
-        ctx.addLine(to: CGPoint(x: cx - headR * 0.19, y: mouthY - headR * 0.04))
-        ctx.move(to: CGPoint(x: cx + headR * 0.16, y: mouthY))
-        ctx.addLine(to: CGPoint(x: cx + headR * 0.19, y: mouthY - headR * 0.04))
-        ctx.strokePath()
-        ctx.setLineCap(.butt)
+        // Downturn at corners
+        for dir: CGFloat in [-1, 1] {
+            ctx.move(to: CGPoint(x: cx + dir * headR * 0.15, y: my))
+            ctx.addLine(to: CGPoint(x: cx + dir * headR * 0.18, y: my - headR * 0.04))
+        }
+        ctx.strokePath(); ctx.setLineCap(.butt)
     }
 
     // MARK: - Jim Halpert
 
     private static func drawJim(_ ctx: CGContext, size s: CGFloat) {
-        let cx = s / 2
-        let headR = s * 0.30
-        let headY = s * 0.60
-        let bodyW = s * 0.26, bodyH = s * 0.20
-        let bodyY = s * 0.25
-
-        let skin = CGColor(red: 0.92, green: 0.80, blue: 0.70, alpha: 1)
+        let cx = s / 2, headR = s * 0.32, headY = s * 0.61
+        let bodyW = s * 0.26, bodyH = s * 0.20, bodyY = s * 0.25
+        let skin = CGColor(red: 0.93, green: 0.81, blue: 0.71, alpha: 1)
         let whiteShirt = CGColor(gray: 0.95, alpha: 1)
-        let looseTie = CGColor(red: 0.40, green: 0.52, blue: 0.72, alpha: 1)
-        let shoe = CGColor(gray: 0.18, alpha: 1)
-        let hair = CGColor(red: 0.35, green: 0.25, blue: 0.15, alpha: 1)
+        let hair = CGColor(red: 0.30, green: 0.20, blue: 0.12, alpha: 1)
 
         drawShadow(ctx, cx: cx, y: bodyY - bodyH / 2 - s * 0.08, w: bodyW, h: s * 0.04)
-        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: shoe, size: s)
-
-        // Body — white shirt, slightly untucked
-        let bodyRect = CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH)
-        outlinedEllipse(ctx, rect: bodyRect, fill: whiteShirt, outline: ol)
-
-        // Open collar — wider V showing more skin (casual)
+        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: CGColor(gray: 0.18, alpha: 1), size: s)
+        outlinedEllipse(ctx, rect: CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH), fill: whiteShirt, outline: ol)
+        // Open collar — skin showing
         ctx.setFillColor(skin)
-        ctx.move(to: CGPoint(x: cx - bodyW * 0.12, y: bodyY + bodyH * 0.42))
-        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.12, y: bodyY + bodyH * 0.42))
-        ctx.addLine(to: CGPoint(x: cx, y: bodyY + bodyH * 0.05))
+        ctx.move(to: CGPoint(x: cx - bodyW * 0.10, y: bodyY + bodyH * 0.42))
+        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.10, y: bodyY + bodyH * 0.42))
+        ctx.addLine(to: CGPoint(x: cx, y: bodyY + bodyH * 0.10))
         ctx.fillPath()
-
-        // Loosened blue tie — pulled down, off-center and askew
-        ctx.setFillColor(looseTie)
-        let tieX = cx + s * 0.01
-        let tieW = s * 0.02
-        // Tie knot sits lower (loosened)
-        ctx.move(to: CGPoint(x: tieX - tieW * 1.2, y: bodyY + bodyH * 0.22))
-        ctx.addLine(to: CGPoint(x: tieX + tieW * 1.2, y: bodyY + bodyH * 0.20))
-        ctx.addLine(to: CGPoint(x: tieX + tieW * 0.8, y: bodyY - bodyH * 0.08))
-        ctx.addLine(to: CGPoint(x: tieX, y: bodyY - bodyH * 0.18))
-        ctx.addLine(to: CGPoint(x: tieX - tieW * 0.5, y: bodyY - bodyH * 0.08))
+        // Loosened tie — sits low, slightly off-center
+        let tieX = cx + s * 0.008
+        ctx.setFillColor(CGColor(red: 0.38, green: 0.50, blue: 0.70, alpha: 1))
+        let tw = s * 0.018
+        ctx.move(to: CGPoint(x: tieX - tw, y: bodyY + bodyH * 0.22))
+        ctx.addLine(to: CGPoint(x: tieX + tw, y: bodyY + bodyH * 0.20))
+        ctx.addLine(to: CGPoint(x: tieX + tw * 0.7, y: bodyY - bodyH * 0.06))
+        ctx.addLine(to: CGPoint(x: tieX, y: bodyY - bodyH * 0.15))
+        ctx.addLine(to: CGPoint(x: tieX - tw * 0.5, y: bodyY - bodyH * 0.06))
         ctx.fillPath()
-
         drawArms(ctx, cx: cx, bodyY: bodyY, bodyW: bodyW, bodyH: bodyH, fill: whiteShirt, size: s)
 
         // Head
         let headRect = CGRect(x: cx - headR, y: headY - headR, width: headR * 2, height: headR * 2)
         outlinedEllipse(ctx, rect: headRect, fill: skin, outline: ol)
-        headHighlight(ctx, headRect: headRect, cx: cx, headY: headY, headR: headR)
+        headHighlight(ctx, cx: cx, headY: headY, headR: headR)
 
-        // Tousled floppy hair — messy layers swooping right
+        // Tousled floppy hair — thick, swooping to the right
         ctx.saveGState()
-        ctx.addEllipse(in: headRect)
-        ctx.clip()
+        ctx.addEllipse(in: headRect); ctx.clip()
         ctx.setFillColor(hair)
-        ctx.fill(CGRect(x: cx - headR, y: headY + headR * 0.18, width: headR * 2, height: headR * 0.88))
+        ctx.fill(CGRect(x: cx - headR, y: headY + headR * 0.15, width: headR * 2, height: headR * 0.90))
         ctx.restoreGState()
-        // Main swoopy fringe — thick and tousled, curves to the right
+        // Big swoopy fringe
         ctx.setFillColor(hair)
-        ctx.move(to: CGPoint(x: cx - headR * 0.75, y: headY + headR * 0.42))
-        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.85, y: headY + headR * 0.28),
-                         control: CGPoint(x: cx + headR * 0.1, y: headY + headR * 0.80))
-        ctx.addLine(to: CGPoint(x: cx + headR * 0.55, y: headY + headR * 0.68))
-        ctx.addQuadCurve(to: CGPoint(x: cx - headR * 0.35, y: headY + headR * 0.68),
-                         control: CGPoint(x: cx + headR * 0.05, y: headY + headR * 0.58))
+        ctx.move(to: CGPoint(x: cx - headR * 0.70, y: headY + headR * 0.42))
+        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.85, y: headY + headR * 0.30),
+                         control: CGPoint(x: cx + headR * 0.10, y: headY + headR * 0.90))
+        ctx.addLine(to: CGPoint(x: cx + headR * 0.60, y: headY + headR * 0.60))
+        ctx.addQuadCurve(to: CGPoint(x: cx - headR * 0.40, y: headY + headR * 0.62),
+                         control: CGPoint(x: cx + headR * 0.05, y: headY + headR * 0.55))
         ctx.fillPath()
-        // Second layer — shorter tuft over the first
-        ctx.move(to: CGPoint(x: cx - headR * 0.5, y: headY + headR * 0.52))
-        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.65, y: headY + headR * 0.38),
-                         control: CGPoint(x: cx + headR * 0.05, y: headY + headR * 0.78))
-        ctx.addLine(to: CGPoint(x: cx + headR * 0.40, y: headY + headR * 0.60))
-        ctx.addLine(to: CGPoint(x: cx - headR * 0.2, y: headY + headR * 0.62))
-        ctx.fillPath()
-        // Stray hair piece sticking up
-        ctx.move(to: CGPoint(x: cx + headR * 0.15, y: headY + headR * 0.72))
-        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.45, y: headY + headR * 0.82),
-                         control: CGPoint(x: cx + headR * 0.35, y: headY + headR * 1.0))
-        ctx.addLine(to: CGPoint(x: cx + headR * 0.35, y: headY + headR * 0.68))
+        // Extra tuft sticking up
+        ctx.move(to: CGPoint(x: cx + headR * 0.20, y: headY + headR * 0.68))
+        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.50, y: headY + headR * 0.78),
+                         control: CGPoint(x: cx + headR * 0.40, y: headY + headR * 0.95))
+        ctx.addLine(to: CGPoint(x: cx + headR * 0.35, y: headY + headR * 0.62))
         ctx.fillPath()
 
-        // Eyes — left normal, right with raised eyebrow
-        drawSimpleEyes(ctx, cx: cx, headY: headY, headR: headR, size: s, spacing: 0.35)
+        // Eyes
+        let eyeY = headY - headR * 0.05
+        drawEyes(ctx, cx: cx, eyeY: eyeY, spacing: headR * 0.36, ew: headR * 0.24, eh: headR * 0.30, skin: skin)
 
-        // Eyebrows — left normal, right raised (signature look-at-camera)
-        ctx.setStrokeColor(CGColor(red: 0.30, green: 0.20, blue: 0.12, alpha: 0.8))
-        ctx.setLineWidth(s * 0.014)
-        ctx.setLineCap(.round)
-        // Left eyebrow — normal
-        let lbx = cx - headR * 0.35, lby = headY + headR * 0.20
-        ctx.move(to: CGPoint(x: lbx - headR * 0.12, y: lby))
-        ctx.addLine(to: CGPoint(x: lbx + headR * 0.12, y: lby + headR * 0.02))
+        // Eyebrows — left normal, right raised (camera look)
+        ctx.setStrokeColor(CGColor(red: 0.25, green: 0.16, blue: 0.08, alpha: 0.7))
+        ctx.setLineWidth(s * 0.012); ctx.setLineCap(.round)
+        ctx.move(to: CGPoint(x: cx - headR * 0.48, y: eyeY + headR * 0.28))
+        ctx.addLine(to: CGPoint(x: cx - headR * 0.24, y: eyeY + headR * 0.30))
         ctx.strokePath()
-        // Right eyebrow — raised high
-        let rbx = cx + headR * 0.35, rby = headY + headR * 0.28
-        ctx.move(to: CGPoint(x: rbx - headR * 0.12, y: rby - headR * 0.02))
-        ctx.addQuadCurve(to: CGPoint(x: rbx + headR * 0.12, y: rby),
-                         control: CGPoint(x: rbx, y: rby + headR * 0.08))
-        ctx.strokePath()
-        ctx.setLineCap(.butt)
+        ctx.move(to: CGPoint(x: cx + headR * 0.24, y: eyeY + headR * 0.30))
+        ctx.addLine(to: CGPoint(x: cx + headR * 0.48, y: eyeY + headR * 0.36))
+        ctx.strokePath(); ctx.setLineCap(.butt)
 
-        // Signature smirk — one-sided half-smile
+        // Smirk — flat left, curves up right
+        let my = headY - headR * 0.42
         ctx.setStrokeColor(CGColor(gray: 0.1, alpha: 1))
-        ctx.setLineWidth(max(s * 0.016, 1.2))
-        ctx.setLineCap(.round)
-        let mouthY = headY - headR * 0.40
-        // Left side flat/slight downturn
-        ctx.move(to: CGPoint(x: cx - headR * 0.16, y: mouthY - headR * 0.01))
-        ctx.addLine(to: CGPoint(x: cx - headR * 0.02, y: mouthY))
+        ctx.setLineWidth(max(s * 0.016, 1.2)); ctx.setLineCap(.round)
+        ctx.move(to: CGPoint(x: cx - headR * 0.15, y: my))
+        ctx.addLine(to: CGPoint(x: cx, y: my))
         ctx.strokePath()
-        // Right side curves up — the smirk
-        ctx.move(to: CGPoint(x: cx - headR * 0.02, y: mouthY))
-        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.20, y: mouthY + headR * 0.08),
-                         control: CGPoint(x: cx + headR * 0.12, y: mouthY + headR * 0.01))
-        ctx.strokePath()
-        ctx.setLineCap(.butt)
+        ctx.move(to: CGPoint(x: cx, y: my))
+        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.18, y: my + headR * 0.07),
+                         control: CGPoint(x: cx + headR * 0.12, y: my + headR * 0.01))
+        ctx.strokePath(); ctx.setLineCap(.butt)
     }
 
     // MARK: - Pam Beesly
 
     private static func drawPam(_ ctx: CGContext, size s: CGFloat) {
-        let cx = s / 2
-        let headR = s * 0.30
-        let headY = s * 0.60
-        let bodyW = s * 0.26, bodyH = s * 0.20
-        let bodyY = s * 0.25
-
-        let skin = CGColor(red: 0.93, green: 0.82, blue: 0.72, alpha: 1)
-        let cardigan = CGColor(red: 0.82, green: 0.68, blue: 0.65, alpha: 1)
-        let blouse = CGColor(red: 0.88, green: 0.85, blue: 0.80, alpha: 1)
-        let shoe = CGColor(red: 0.55, green: 0.40, blue: 0.35, alpha: 1)
-        let hairColor = CGColor(red: 0.55, green: 0.30, blue: 0.18, alpha: 1)
-        let hairHighlight = CGColor(red: 0.65, green: 0.38, blue: 0.22, alpha: 1)
+        let cx = s / 2, headR = s * 0.32, headY = s * 0.61
+        let bodyW = s * 0.25, bodyH = s * 0.20, bodyY = s * 0.25
+        let skin = CGColor(red: 0.94, green: 0.83, blue: 0.73, alpha: 1)
+        let cardigan = CGColor(red: 0.78, green: 0.60, blue: 0.62, alpha: 1)
+        let blouse = CGColor(red: 0.90, green: 0.86, blue: 0.82, alpha: 1)
+        let hairColor = CGColor(red: 0.52, green: 0.28, blue: 0.15, alpha: 1)
 
         drawShadow(ctx, cx: cx, y: bodyY - bodyH / 2 - s * 0.08, w: bodyW, h: s * 0.04)
-        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: shoe, size: s)
+        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: CGColor(red: 0.50, green: 0.38, blue: 0.32, alpha: 1), size: s)
 
-        // Flowing curly hair behind body (drawn before body)
+        // Hair flowing behind body
+        ctx.setFillColor(hairColor)
         for dir: CGFloat in [-1, 1] {
-            let hx = cx + dir * bodyW * 0.35
-            ctx.setFillColor(hairColor)
-            // Main flowing wave
-            ctx.move(to: CGPoint(x: hx, y: headY - headR * 0.15))
-            ctx.addQuadCurve(to: CGPoint(x: hx + dir * headR * 0.25, y: bodyY + bodyH * 0.20),
-                             control: CGPoint(x: hx + dir * headR * 0.35, y: headY - headR * 0.55))
-            ctx.addQuadCurve(to: CGPoint(x: hx - dir * headR * 0.05, y: bodyY - bodyH * 0.05),
-                             control: CGPoint(x: hx - dir * headR * 0.10, y: bodyY + bodyH * 0.10))
-            ctx.addLine(to: CGPoint(x: hx - dir * headR * 0.15, y: headY - headR * 0.15))
+            let hx = cx + dir * bodyW * 0.30
+            ctx.move(to: CGPoint(x: hx, y: headY - headR * 0.10))
+            ctx.addQuadCurve(to: CGPoint(x: hx + dir * headR * 0.20, y: bodyY + bodyH * 0.15),
+                             control: CGPoint(x: hx + dir * headR * 0.30, y: headY - headR * 0.50))
+            ctx.addLine(to: CGPoint(x: hx - dir * headR * 0.10, y: bodyY))
             ctx.fillPath()
         }
 
-        // Body — pink cardigan
-        let bodyRect = CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH)
-        outlinedEllipse(ctx, rect: bodyRect, fill: cardigan, outline: ol)
-
-        // Blouse showing under cardigan
+        outlinedEllipse(ctx, rect: CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH), fill: cardigan, outline: ol)
+        // Blouse under cardigan
         ctx.setFillColor(blouse)
-        ctx.move(to: CGPoint(x: cx - bodyW * 0.12, y: bodyY + bodyH * 0.35))
-        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.12, y: bodyY + bodyH * 0.35))
-        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.08, y: bodyY - bodyH * 0.15))
-        ctx.addLine(to: CGPoint(x: cx - bodyW * 0.08, y: bodyY - bodyH * 0.15))
+        ctx.move(to: CGPoint(x: cx - bodyW * 0.10, y: bodyY + bodyH * 0.35))
+        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.10, y: bodyY + bodyH * 0.35))
+        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.06, y: bodyY - bodyH * 0.10))
+        ctx.addLine(to: CGPoint(x: cx - bodyW * 0.06, y: bodyY - bodyH * 0.10))
         ctx.fillPath()
-
-        // Left arm (cardigan)
-        let lax = cx - (bodyW / 2 + s * 0.04)
-        let lay = bodyY + bodyH * 0.05
-        ctx.saveGState()
-        ctx.translateBy(x: lax, y: lay)
-        ctx.rotate(by: -0.3)
-        outlinedEllipse(ctx, rect: CGRect(x: -s * 0.03, y: -s * 0.055, width: s * 0.06, height: s * 0.11), fill: cardigan, outline: ol)
-        ctx.restoreGState()
-
-        // Right arm angled to hold paintbrush
-        let rax = cx + (bodyW / 2 + s * 0.02)
-        let ray = bodyY + bodyH * 0.08
-        ctx.saveGState()
-        ctx.translateBy(x: rax, y: ray)
-        ctx.rotate(by: 0.15)
-        outlinedEllipse(ctx, rect: CGRect(x: -s * 0.03, y: -s * 0.055, width: s * 0.06, height: s * 0.11), fill: cardigan, outline: ol)
-        ctx.restoreGState()
-
-        // Paintbrush in right hand
-        let brushX = cx + bodyW * 0.55
-        let brushY = bodyY + bodyH * 0.15
-        ctx.setStrokeColor(CGColor(red: 0.55, green: 0.40, blue: 0.20, alpha: 1))
-        ctx.setLineWidth(s * 0.008)
-        ctx.move(to: CGPoint(x: brushX, y: brushY - s * 0.04))
-        ctx.addLine(to: CGPoint(x: brushX + s * 0.01, y: brushY + s * 0.05))
-        ctx.strokePath()
-        // Brush tip
-        ctx.setFillColor(CGColor(red: 0.35, green: 0.55, blue: 0.78, alpha: 1))
-        ctx.fillEllipse(in: CGRect(x: brushX + s * 0.005 - s * 0.008,
-                                   y: brushY + s * 0.045,
-                                   width: s * 0.016, height: s * 0.022))
-        // Ferrule (metal band)
-        ctx.setFillColor(CGColor(gray: 0.70, alpha: 1))
-        ctx.fill(CGRect(x: brushX - s * 0.005, y: brushY + s * 0.035, width: s * 0.014, height: s * 0.012))
+        drawArms(ctx, cx: cx, bodyY: bodyY, bodyW: bodyW, bodyH: bodyH, fill: cardigan, size: s)
 
         // Head
         let headRect = CGRect(x: cx - headR, y: headY - headR, width: headR * 2, height: headR * 2)
         outlinedEllipse(ctx, rect: headRect, fill: skin, outline: ol)
-        headHighlight(ctx, headRect: headRect, cx: cx, headY: headY, headR: headR)
+        headHighlight(ctx, cx: cx, headY: headY, headR: headR)
 
-        // Auburn curly hair — flowing waves framing face
+        // Auburn wavy hair — frame face, center part
         ctx.saveGState()
-        ctx.addEllipse(in: headRect)
-        ctx.clip()
+        ctx.addEllipse(in: headRect); ctx.clip()
         ctx.setFillColor(hairColor)
-        ctx.fill(CGRect(x: cx - headR, y: headY + headR * 0.25, width: headR * 2, height: headR * 0.80))
-        // Soft center part
+        ctx.fill(CGRect(x: cx - headR, y: headY + headR * 0.22, width: headR * 2, height: headR * 0.82))
         ctx.setFillColor(skin)
-        ctx.fillEllipse(in: CGRect(x: cx - headR * 0.06, y: headY + headR * 0.55, width: headR * 0.12, height: headR * 0.30))
+        ctx.fillEllipse(in: CGRect(x: cx - headR * 0.06, y: headY + headR * 0.52, width: headR * 0.12, height: headR * 0.30))
         ctx.restoreGState()
-        // Curly wave highlights on each side
-        ctx.setStrokeColor(hairHighlight)
-        ctx.setLineWidth(s * 0.008)
-        ctx.setLineCap(.round)
+        // Wavy strands on sides
+        ctx.setStrokeColor(CGColor(red: 0.62, green: 0.36, blue: 0.20, alpha: 0.6))
+        ctx.setLineWidth(s * 0.007); ctx.setLineCap(.round)
         for dir: CGFloat in [-1, 1] {
-            let wx = cx + dir * headR * 0.55
-            // Wave curl lines
-            ctx.move(to: CGPoint(x: wx, y: headY + headR * 0.15))
-            ctx.addQuadCurve(to: CGPoint(x: wx + dir * headR * 0.12, y: headY - headR * 0.20),
-                             control: CGPoint(x: wx + dir * headR * 0.22, y: headY))
-            ctx.move(to: CGPoint(x: wx + dir * headR * 0.05, y: headY - headR * 0.10))
-            ctx.addQuadCurve(to: CGPoint(x: wx + dir * headR * 0.18, y: headY - headR * 0.45),
-                             control: CGPoint(x: wx + dir * headR * 0.28, y: headY - headR * 0.25))
+            let wx = cx + dir * headR * 0.50
+            ctx.move(to: CGPoint(x: wx, y: headY + headR * 0.10))
+            ctx.addQuadCurve(to: CGPoint(x: wx + dir * headR * 0.15, y: headY - headR * 0.30),
+                             control: CGPoint(x: wx + dir * headR * 0.22, y: headY - headR * 0.05))
         }
-        ctx.strokePath()
-        ctx.setLineCap(.butt)
+        ctx.strokePath(); ctx.setLineCap(.butt)
 
-        // Soft warm eyes with slight lashes
+        // Warm eyes
         let eyeY = headY - headR * 0.05
-        let sp = headR * 0.35
-        let ew = headR * 0.24, eh = headR * 0.30
-        for dir: CGFloat in [-1, 1] {
-            let ex = cx + dir * sp
-            ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ew - 1.5, y: eyeY - eh - 1.5, width: (ew + 1.5) * 2, height: (eh + 1.5) * 2))
-            ctx.setFillColor(CGColor(gray: 1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ew, y: eyeY - eh, width: ew * 2, height: eh * 2))
-            // Green-hazel pupils
-            let pw = ew * 0.52, ph = eh * 0.52
-            ctx.setFillColor(CGColor(red: 0.35, green: 0.50, blue: 0.35, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - pw, y: eyeY - ph, width: pw * 2, height: ph * 2))
-            // Inner dark pupil
-            let ip = pw * 0.5
-            ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ip, y: eyeY - ip, width: ip * 2, height: ip * 2))
-            let hlR = ew * 0.28
-            ctx.setFillColor(CGColor(gray: 1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex + ew * 0.2 - hlR / 2, y: eyeY + eh * 0.25 - hlR / 2, width: hlR, height: hlR))
-            // Small lashes at corners
-            ctx.setStrokeColor(CGColor(gray: 0.15, alpha: 1))
-            ctx.setLineWidth(s * 0.006)
-            ctx.move(to: CGPoint(x: ex + dir * ew * 0.85, y: eyeY + eh * 0.55))
-            ctx.addLine(to: CGPoint(x: ex + dir * ew * 1.1, y: eyeY + eh * 0.75))
-            ctx.strokePath()
-        }
+        drawEyes(ctx, cx: cx, eyeY: eyeY, spacing: headR * 0.35, ew: headR * 0.22, eh: headR * 0.28, skin: skin)
 
-        // Gentle warm smile
-        drawSmile(ctx, cx: cx, headY: headY, headR: headR, size: s)
+        // Gentle smile
+        let my = headY - headR * 0.40
+        ctx.setStrokeColor(CGColor(gray: 0.1, alpha: 1))
+        ctx.setLineWidth(max(s * 0.016, 1.2)); ctx.setLineCap(.round)
+        ctx.addArc(center: CGPoint(x: cx, y: my + headR * 0.10),
+                   radius: headR * 0.14,
+                   startAngle: -.pi * 0.15, endAngle: -.pi * 0.85, clockwise: true)
+        ctx.strokePath(); ctx.setLineCap(.butt)
 
         // Rosy cheeks
-        ctx.setFillColor(CGColor(red: 0.90, green: 0.60, blue: 0.55, alpha: 0.28))
+        ctx.setFillColor(CGColor(red: 0.90, green: 0.58, blue: 0.52, alpha: 0.25))
         for dir: CGFloat in [-1, 1] {
-            let cheekX = cx + dir * headR * 0.45
-            let cheekY = headY - headR * 0.22
-            let cheekR = headR * 0.13
-            ctx.fillEllipse(in: CGRect(x: cheekX - cheekR, y: cheekY - cheekR, width: cheekR * 2, height: cheekR * 2))
+            let chX = cx + dir * headR * 0.44, chY = headY - headR * 0.22, chR = headR * 0.12
+            ctx.fillEllipse(in: CGRect(x: chX - chR, y: chY - chR, width: chR * 2, height: chR * 2))
         }
     }
 
     // MARK: - Angela Martin
 
     private static func drawAngela(_ ctx: CGContext, size s: CGFloat) {
-        let cx = s / 2
-        let headR = s * 0.28
-        let headY = s * 0.60
-        let bodyW = s * 0.24, bodyH = s * 0.20
-        let bodyY = s * 0.25
+        let cx = s / 2, headR = s * 0.30, headY = s * 0.58
+        let bodyW = s * 0.22, bodyH = s * 0.18, bodyY = s * 0.25  // small frame
+        let skin = CGColor(red: 0.95, green: 0.86, blue: 0.78, alpha: 1)
+        let outfit = CGColor(red: 0.85, green: 0.80, blue: 0.72, alpha: 1)
+        let blondeHair = CGColor(red: 0.90, green: 0.80, blue: 0.55, alpha: 1)
 
-        let skin = CGColor(red: 0.94, green: 0.85, blue: 0.78, alpha: 1)
-        let outfit = CGColor(red: 0.85, green: 0.82, blue: 0.72, alpha: 1)
-        let shoe = CGColor(red: 0.50, green: 0.42, blue: 0.35, alpha: 1)
-        let blondeHair = CGColor(red: 0.88, green: 0.78, blue: 0.52, alpha: 1)
-
-        // Tiny cat sitting next to Angela's feet
-        let catX = cx - bodyW * 0.65
-        let catY = bodyY - bodyH / 2 - s * 0.02
-        let catR = s * 0.035
-        // Cat body
-        ctx.setFillColor(CGColor(gray: 0.85, alpha: 1))
-        ctx.fillEllipse(in: CGRect(x: catX - catR, y: catY - catR * 0.8, width: catR * 2, height: catR * 1.6))
-        // Cat head
-        let catHeadR = catR * 0.7
-        ctx.fillEllipse(in: CGRect(x: catX - catHeadR, y: catY + catR * 0.6, width: catHeadR * 2, height: catHeadR * 2))
-        // Cat ears (triangles)
-        ctx.setFillColor(CGColor(gray: 0.85, alpha: 1))
-        for dir: CGFloat in [-1, 1] {
-            ctx.move(to: CGPoint(x: catX + dir * catHeadR * 0.5, y: catY + catR * 0.6 + catHeadR * 1.6))
-            ctx.addLine(to: CGPoint(x: catX + dir * catHeadR * 0.9, y: catY + catR * 0.6 + catHeadR * 2.3))
-            ctx.addLine(to: CGPoint(x: catX + dir * catHeadR * 0.1, y: catY + catR * 0.6 + catHeadR * 1.8))
-            ctx.fillPath()
-        }
-        // Cat eyes — tiny dots
-        ctx.setFillColor(CGColor(gray: 0.2, alpha: 1))
-        for dir: CGFloat in [-1, 1] {
-            ctx.fillEllipse(in: CGRect(x: catX + dir * catHeadR * 0.35 - catR * 0.08,
-                                       y: catY + catR * 0.6 + catHeadR * 1.0,
-                                       width: catR * 0.16, height: catR * 0.16))
-        }
-        // Cat tail curling up
-        ctx.setStrokeColor(CGColor(gray: 0.80, alpha: 1))
-        ctx.setLineWidth(s * 0.006)
-        ctx.setLineCap(.round)
-        ctx.move(to: CGPoint(x: catX + catR, y: catY))
-        ctx.addQuadCurve(to: CGPoint(x: catX + catR * 1.5, y: catY + catR * 1.2),
-                         control: CGPoint(x: catX + catR * 2.2, y: catY + catR * 0.3))
-        ctx.strokePath()
-        ctx.setLineCap(.butt)
-
-        drawShadow(ctx, cx: cx, y: bodyY - bodyH / 2 - s * 0.08, w: bodyW * 0.9, h: s * 0.035)
-        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: shoe, size: s)
-
-        // Body — conservative beige outfit
-        let bodyRect = CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH)
-        outlinedEllipse(ctx, rect: bodyRect, fill: outfit, outline: ol)
+        drawShadow(ctx, cx: cx, y: bodyY - bodyH / 2 - s * 0.08, w: bodyW * 0.85, h: s * 0.03)
+        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: CGColor(red: 0.48, green: 0.40, blue: 0.32, alpha: 1), size: s)
+        outlinedEllipse(ctx, rect: CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH), fill: outfit, outline: ol)
 
         // Cross necklace
-        ctx.setStrokeColor(CGColor(red: 0.75, green: 0.68, blue: 0.45, alpha: 1))
-        ctx.setLineWidth(s * 0.008)
-        let crossY = bodyY + bodyH * 0.25
-        ctx.move(to: CGPoint(x: cx, y: crossY + s * 0.03))
-        ctx.addLine(to: CGPoint(x: cx, y: crossY - s * 0.02))
+        ctx.setStrokeColor(CGColor(red: 0.78, green: 0.70, blue: 0.48, alpha: 1))
+        ctx.setLineWidth(s * 0.007)
+        let crY = bodyY + bodyH * 0.22
+        ctx.move(to: CGPoint(x: cx, y: crY + s * 0.025))
+        ctx.addLine(to: CGPoint(x: cx, y: crY - s * 0.015))
         ctx.strokePath()
-        ctx.move(to: CGPoint(x: cx - s * 0.012, y: crossY + s * 0.015))
-        ctx.addLine(to: CGPoint(x: cx + s * 0.012, y: crossY + s * 0.015))
+        ctx.move(to: CGPoint(x: cx - s * 0.010, y: crY + s * 0.012))
+        ctx.addLine(to: CGPoint(x: cx + s * 0.010, y: crY + s * 0.012))
         ctx.strokePath()
 
         drawArms(ctx, cx: cx, bodyY: bodyY, bodyW: bodyW, bodyH: bodyH, fill: outfit, size: s)
@@ -860,474 +596,211 @@ enum OfficeCharacterGenerator {
         // Head
         let headRect = CGRect(x: cx - headR, y: headY - headR, width: headR * 2, height: headR * 2)
         outlinedEllipse(ctx, rect: headRect, fill: skin, outline: ol)
-        headHighlight(ctx, headRect: headRect, cx: cx, headY: headY, headR: headR)
+        headHighlight(ctx, cx: cx, headY: headY, headR: headR)
 
-        // Hair pulled back very tightly — smooth, flat to head
+        // Tight pulled-back blonde hair
         ctx.saveGState()
-        ctx.addEllipse(in: headRect)
-        ctx.clip()
+        ctx.addEllipse(in: headRect); ctx.clip()
         ctx.setFillColor(blondeHair)
         ctx.fill(CGRect(x: cx - headR, y: headY + headR * 0.40, width: headR * 2, height: headR * 0.65))
         ctx.restoreGState()
+        // Bun on top
+        let bunR = headR * 0.20
+        outlinedEllipse(ctx, rect: CGRect(x: cx - bunR, y: headY + headR + bunR * 0.3, width: bunR * 2, height: bunR * 2), fill: blondeHair, outline: ol)
 
-        // Tight severe bun on back of head
-        let bunR = headR * 0.22
-        let bunY = headY + headR * 0.95
-        outlinedEllipse(ctx, rect: CGRect(x: cx - bunR, y: bunY - bunR, width: bunR * 2, height: bunR * 2),
-                        fill: blondeHair, outline: ol)
-        // Hair pin
-        ctx.setStrokeColor(CGColor(red: 0.70, green: 0.62, blue: 0.40, alpha: 1))
-        ctx.setLineWidth(s * 0.005)
-        ctx.move(to: CGPoint(x: cx - bunR * 0.3, y: bunY + bunR * 0.8))
-        ctx.addLine(to: CGPoint(x: cx + bunR * 0.3, y: bunY + bunR * 1.2))
-        ctx.strokePath()
-
-        // Narrow disapproving eyes — half-lidded, icy
+        // Narrow disapproving eyes
         let eyeY = headY - headR * 0.02
-        let sp = headR * 0.32
-        let ew = headR * 0.20, eh = headR * 0.20
-        for dir: CGFloat in [-1, 1] {
-            let ex = cx + dir * sp
-            ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ew - 1.5, y: eyeY - eh - 1.5, width: (ew + 1.5) * 2, height: (eh + 1.5) * 2))
-            ctx.setFillColor(CGColor(gray: 1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ew, y: eyeY - eh, width: ew * 2, height: eh * 2))
-            // Light blue-gray iris
-            let pw = ew * 0.52, ph = eh * 0.52
-            ctx.setFillColor(CGColor(red: 0.55, green: 0.62, blue: 0.70, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - pw, y: eyeY - ph, width: pw * 2, height: ph * 2))
-            let ip = pw * 0.5
-            ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ip, y: eyeY - ip, width: ip * 2, height: ip * 2))
-            let hlR = ew * 0.25
-            ctx.setFillColor(CGColor(gray: 1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex + ew * 0.2 - hlR / 2, y: eyeY + eh * 0.2 - hlR / 2, width: hlR, height: hlR))
-            // Heavy disapproving upper lid
-            ctx.setFillColor(skin)
-            ctx.fillEllipse(in: CGRect(x: ex - ew * 1.1, y: eyeY + eh * 0.15, width: ew * 2.2, height: eh * 0.8))
-        }
+        drawEyes(ctx, cx: cx, eyeY: eyeY, spacing: headR * 0.32, ew: headR * 0.18, eh: headR * 0.20, skin: skin, halfLid: 0.40, pupilScale: 0.50)
 
-        // Disapproving thin eyebrows
-        ctx.setStrokeColor(blondeHair)
-        ctx.setLineWidth(s * 0.010)
-        ctx.setLineCap(.round)
-        for dir: CGFloat in [-1, 1] {
-            let bx = cx + dir * headR * 0.32
-            let by = headY + headR * 0.20
-            ctx.move(to: CGPoint(x: bx - dir * headR * 0.12, y: by + headR * 0.02))
-            ctx.addLine(to: CGPoint(x: bx + dir * headR * 0.12, y: by - headR * 0.01))
-        }
-        ctx.strokePath()
-        ctx.setLineCap(.butt)
-
-        // Pursed tight lips — tiny, disapproving
+        // Thin pursed mouth
+        let my = headY - headR * 0.38
         ctx.setStrokeColor(CGColor(gray: 0.1, alpha: 1))
-        ctx.setLineWidth(max(s * 0.013, 1.0))
-        ctx.setLineCap(.round)
-        let mouthY = headY - headR * 0.38
-        ctx.move(to: CGPoint(x: cx - headR * 0.07, y: mouthY + headR * 0.01))
-        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.07, y: mouthY + headR * 0.01),
-                         control: CGPoint(x: cx, y: mouthY - headR * 0.02))
-        ctx.strokePath()
-        ctx.setLineCap(.butt)
+        ctx.setLineWidth(max(s * 0.013, 1.0)); ctx.setLineCap(.round)
+        ctx.move(to: CGPoint(x: cx - headR * 0.08, y: my))
+        ctx.addLine(to: CGPoint(x: cx + headR * 0.08, y: my))
+        ctx.strokePath(); ctx.setLineCap(.butt)
     }
 
     // MARK: - Kevin Malone
 
     private static func drawKevin(_ ctx: CGContext, size s: CGFloat) {
-        let cx = s / 2
-        let headR = s * 0.34
-        let headY = s * 0.61
-        let bodyW = s * 0.32, bodyH = s * 0.24
-        let bodyY = s * 0.25
-
+        let cx = s / 2, headR = s * 0.38, headY = s * 0.62
+        let bodyW = s * 0.34, bodyH = s * 0.24, bodyY = s * 0.24  // wide
         let skin = CGColor(red: 0.92, green: 0.80, blue: 0.70, alpha: 1)
-        let greenCardigan = CGColor(red: 0.35, green: 0.52, blue: 0.35, alpha: 1)
+        let cardigan = CGColor(red: 0.32, green: 0.50, blue: 0.32, alpha: 1)
         let shirt = CGColor(gray: 0.90, alpha: 1)
-        let shoe = CGColor(gray: 0.18, alpha: 1)
 
         drawShadow(ctx, cx: cx, y: bodyY - bodyH / 2 - s * 0.08, w: bodyW * 1.1, h: s * 0.04)
-        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: shoe, size: s)
-
-        // Body — green cardigan, wider than others
-        let bodyRect = CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH)
-        outlinedEllipse(ctx, rect: bodyRect, fill: greenCardigan, outline: ol)
-
-        // Shirt underneath
+        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: CGColor(gray: 0.18, alpha: 1), size: s)
+        outlinedEllipse(ctx, rect: CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH), fill: cardigan, outline: ol)
+        // Shirt showing
         ctx.setFillColor(shirt)
-        ctx.move(to: CGPoint(x: cx - bodyW * 0.15, y: bodyY + bodyH * 0.38))
-        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.15, y: bodyY + bodyH * 0.38))
-        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.10, y: bodyY - bodyH * 0.1))
-        ctx.addLine(to: CGPoint(x: cx - bodyW * 0.10, y: bodyY - bodyH * 0.1))
+        ctx.move(to: CGPoint(x: cx - bodyW * 0.12, y: bodyY + bodyH * 0.36))
+        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.12, y: bodyY + bodyH * 0.36))
+        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.08, y: bodyY - bodyH * 0.05))
+        ctx.addLine(to: CGPoint(x: cx - bodyW * 0.08, y: bodyY - bodyH * 0.05))
         ctx.fillPath()
+        drawArms(ctx, cx: cx, bodyY: bodyY, bodyW: bodyW, bodyH: bodyH, fill: cardigan, size: s)
 
-        drawArms(ctx, cx: cx, bodyY: bodyY, bodyW: bodyW, bodyH: bodyH, fill: greenCardigan, size: s)
-
-        // Head — round and wide
+        // Big round head
         let headRect = CGRect(x: cx - headR, y: headY - headR, width: headR * 2, height: headR * 2)
         outlinedEllipse(ctx, rect: headRect, fill: skin, outline: ol)
-        headHighlight(ctx, headRect: headRect, cx: cx, headY: headY, headR: headR)
+        headHighlight(ctx, cx: cx, headY: headY, headR: headR)
 
-        // Bald — very short hair stubble on sides only
-        ctx.setFillColor(CGColor(red: 0.40, green: 0.30, blue: 0.22, alpha: 0.25))
+        // Bald — just faint stubble on sides
+        ctx.setFillColor(CGColor(red: 0.38, green: 0.28, blue: 0.20, alpha: 0.18))
         ctx.saveGState()
-        ctx.addEllipse(in: headRect)
-        ctx.clip()
-        ctx.fill(CGRect(x: cx - headR, y: headY - headR * 0.25, width: headR * 0.35, height: headR * 0.65))
-        ctx.fill(CGRect(x: cx + headR * 0.65, y: headY - headR * 0.25, width: headR * 0.35, height: headR * 0.65))
+        ctx.addEllipse(in: headRect); ctx.clip()
+        ctx.fill(CGRect(x: cx - headR, y: headY - headR * 0.25, width: headR * 0.30, height: headR * 0.55))
+        ctx.fill(CGRect(x: cx + headR * 0.70, y: headY - headR * 0.25, width: headR * 0.30, height: headR * 0.55))
         ctx.restoreGState()
 
-        // Dopey half-closed eyes — droopy lids
+        // Dopey half-lidded eyes
         let eyeY = headY - headR * 0.02
-        let sp = headR * 0.42
-        let ew = headR * 0.15, eh = headR * 0.18
-        for dir: CGFloat in [-1, 1] {
-            let ex = cx + dir * sp
-            ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ew - 1.5, y: eyeY - eh - 1.5, width: (ew + 1.5) * 2, height: (eh + 1.5) * 2))
-            ctx.setFillColor(CGColor(gray: 1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ew, y: eyeY - eh, width: ew * 2, height: eh * 2))
-            let pw = ew * 0.60
-            ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - pw, y: eyeY - pw * 0.8, width: pw * 2, height: pw * 1.6))
-            let hlR = ew * 0.28
-            ctx.setFillColor(CGColor(gray: 1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex + ew * 0.15 - hlR / 2, y: eyeY + eh * 0.15 - hlR / 2, width: hlR, height: hlR))
-            // Heavy droopy upper eyelid
-            ctx.setFillColor(skin)
-            ctx.fillEllipse(in: CGRect(x: ex - ew * 1.2, y: eyeY + eh * 0.0, width: ew * 2.4, height: eh * 1.0))
-        }
+        drawEyes(ctx, cx: cx, eyeY: eyeY, spacing: headR * 0.38, ew: headR * 0.16, eh: headR * 0.20, skin: skin, halfLid: 0.45, pupilScale: 0.55)
 
-        // Simple short eyebrows
-        ctx.setStrokeColor(CGColor(red: 0.35, green: 0.25, blue: 0.18, alpha: 0.6))
-        ctx.setLineWidth(s * 0.012)
-        ctx.setLineCap(.round)
-        for dir: CGFloat in [-1, 1] {
-            let bx = cx + dir * sp
-            ctx.move(to: CGPoint(x: bx - headR * 0.10, y: eyeY + eh * 1.15))
-            ctx.addLine(to: CGPoint(x: bx + headR * 0.10, y: eyeY + eh * 1.10))
-        }
-        ctx.strokePath()
-        ctx.setLineCap(.butt)
-
-        // Big wide dopey open-mouth grin
-        let mouthY = headY - headR * 0.42
-        let mouthW = headR * 0.42
-        let mouthH = headR * 0.22
-        ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-        ctx.fillEllipse(in: CGRect(x: cx - mouthW, y: mouthY - mouthH, width: mouthW * 2, height: mouthH * 2))
-        // Upper teeth row
+        // Big open-mouth grin
+        let my = headY - headR * 0.42, mw = headR * 0.38, mh = headR * 0.20
+        ctx.setFillColor(CGColor(red: 0.30, green: 0.08, blue: 0.06, alpha: 1))
+        ctx.fillEllipse(in: CGRect(x: cx - mw, y: my - mh, width: mw * 2, height: mh * 2))
+        // Teeth
         ctx.setFillColor(CGColor(gray: 0.95, alpha: 1))
-        ctx.fill(CGRect(x: cx - mouthW * 0.78, y: mouthY, width: mouthW * 1.56, height: mouthH * 0.75))
-        // Tongue hint at bottom
-        ctx.setFillColor(CGColor(red: 0.85, green: 0.50, blue: 0.48, alpha: 1))
-        ctx.fillEllipse(in: CGRect(x: cx - mouthW * 0.35, y: mouthY - mouthH * 0.75, width: mouthW * 0.7, height: mouthH * 0.6))
+        ctx.fill(CGRect(x: cx - mw * 0.75, y: my + mh * 0.05, width: mw * 1.50, height: mh * 0.65))
     }
 
     // MARK: - Stanley Hudson
 
     private static func drawStanley(_ ctx: CGContext, size s: CGFloat) {
-        let cx = s / 2
-        let headR = s * 0.32
-        let headY = s * 0.62
-        let bodyW = s * 0.30, bodyH = s * 0.22
-        let bodyY = s * 0.25
-
+        let cx = s / 2, headR = s * 0.34, headY = s * 0.63
+        let bodyW = s * 0.30, bodyH = s * 0.22, bodyY = s * 0.25
         let skin = CGColor(red: 0.42, green: 0.30, blue: 0.22, alpha: 1)
-        let sweaterVest = CGColor(red: 0.55, green: 0.45, blue: 0.32, alpha: 1)
+        let sweater = CGColor(red: 0.52, green: 0.42, blue: 0.30, alpha: 1)
         let whiteShirt = CGColor(gray: 0.92, alpha: 1)
-        let shoe = CGColor(gray: 0.15, alpha: 1)
 
         drawShadow(ctx, cx: cx, y: bodyY - bodyH / 2 - s * 0.08, w: bodyW, h: s * 0.04)
-        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: shoe, size: s)
-
-        // Body — sweater vest over white shirt
-        let bodyRect = CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH)
-        outlinedEllipse(ctx, rect: bodyRect, fill: sweaterVest, outline: ol)
-
-        // White shirt collar — collared, wider showing
+        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: CGColor(gray: 0.15, alpha: 1), size: s)
+        outlinedEllipse(ctx, rect: CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH), fill: sweater, outline: ol)
+        // White collar
         ctx.setFillColor(whiteShirt)
-        ctx.move(to: CGPoint(x: cx - bodyW * 0.22, y: bodyY + bodyH * 0.42))
-        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.22, y: bodyY + bodyH * 0.42))
-        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.14, y: bodyY + bodyH * 0.20))
-        ctx.addLine(to: CGPoint(x: cx - bodyW * 0.14, y: bodyY + bodyH * 0.20))
+        ctx.move(to: CGPoint(x: cx - bodyW * 0.20, y: bodyY + bodyH * 0.42))
+        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.20, y: bodyY + bodyH * 0.42))
+        ctx.addLine(to: CGPoint(x: cx + bodyW * 0.12, y: bodyY + bodyH * 0.22))
+        ctx.addLine(to: CGPoint(x: cx - bodyW * 0.12, y: bodyY + bodyH * 0.22))
         ctx.fillPath()
-
-        // Left arm (white shirt sleeve)
-        let lax = cx - (bodyW / 2 + s * 0.04)
-        let lay = bodyY + bodyH * 0.05
-        ctx.saveGState()
-        ctx.translateBy(x: lax, y: lay)
-        ctx.rotate(by: -0.3)
-        outlinedEllipse(ctx, rect: CGRect(x: -s * 0.03, y: -s * 0.055, width: s * 0.06, height: s * 0.11), fill: whiteShirt, outline: ol)
-        ctx.restoreGState()
-
-        // Right arm holding crossword
-        let rax = cx + (bodyW / 2 + s * 0.02)
-        let ray = bodyY + bodyH * 0.10
-        ctx.saveGState()
-        ctx.translateBy(x: rax, y: ray)
-        ctx.rotate(by: 0.1)
-        outlinedEllipse(ctx, rect: CGRect(x: -s * 0.03, y: -s * 0.055, width: s * 0.06, height: s * 0.11), fill: whiteShirt, outline: ol)
-        ctx.restoreGState()
-
-        // Crossword puzzle paper
-        let cwX = cx + bodyW * 0.52
-        let cwY = bodyY + bodyH * 0.0
-        let cwW = s * 0.07, cwH = s * 0.055
-        // Paper
-        outlinedRect(ctx, rect: CGRect(x: cwX - cwW / 2, y: cwY - cwH / 2, width: cwW, height: cwH),
-                     fill: CGColor(gray: 0.96, alpha: 1), outline: ol * 0.5)
-        // Grid lines
-        ctx.setStrokeColor(CGColor(gray: 0.6, alpha: 1))
-        ctx.setLineWidth(s * 0.003)
-        let gridStep = cwW / 4
-        for i in 1..<4 {
-            let offset = CGFloat(i) * gridStep
-            ctx.move(to: CGPoint(x: cwX - cwW / 2 + offset, y: cwY - cwH / 2))
-            ctx.addLine(to: CGPoint(x: cwX - cwW / 2 + offset, y: cwY + cwH / 2))
-            let oy = CGFloat(i) * cwH / 3
-            ctx.move(to: CGPoint(x: cwX - cwW / 2, y: cwY - cwH / 2 + oy))
-            ctx.addLine(to: CGPoint(x: cwX + cwW / 2, y: cwY - cwH / 2 + oy))
-        }
-        ctx.strokePath()
-        // Black squares in crossword
-        ctx.setFillColor(CGColor(gray: 0.15, alpha: 1))
-        ctx.fill(CGRect(x: cwX - cwW / 2, y: cwY - cwH / 2, width: gridStep, height: cwH / 3))
-        ctx.fill(CGRect(x: cwX + cwW / 2 - gridStep, y: cwY + cwH / 2 - cwH / 3, width: gridStep, height: cwH / 3))
-
-        // Pencil
-        ctx.setStrokeColor(CGColor(red: 0.85, green: 0.75, blue: 0.20, alpha: 1))
-        ctx.setLineWidth(s * 0.006)
-        ctx.move(to: CGPoint(x: cwX + cwW * 0.35, y: cwY - cwH * 0.45))
-        ctx.addLine(to: CGPoint(x: cwX + cwW * 0.55, y: cwY + cwH * 0.35))
-        ctx.strokePath()
+        drawArms(ctx, cx: cx, bodyY: bodyY, bodyW: bodyW, bodyH: bodyH, fill: whiteShirt, size: s)
 
         // Head
         let headRect = CGRect(x: cx - headR, y: headY - headR, width: headR * 2, height: headR * 2)
         outlinedEllipse(ctx, rect: headRect, fill: skin, outline: ol)
-        headHighlight(ctx, headRect: headRect, cx: cx, headY: headY, headR: headR)
+        headHighlight(ctx, cx: cx, headY: headY, headR: headR)
 
-        // Completely bald on top — gray stubble on sides
-        ctx.setFillColor(CGColor(gray: 0.45, alpha: 0.25))
+        // Bald — gray patches on sides
+        ctx.setFillColor(CGColor(gray: 0.42, alpha: 0.22))
         ctx.saveGState()
-        ctx.addEllipse(in: headRect)
-        ctx.clip()
-        ctx.fill(CGRect(x: cx - headR, y: headY - headR * 0.30, width: headR * 0.38, height: headR * 0.70))
-        ctx.fill(CGRect(x: cx + headR * 0.62, y: headY - headR * 0.30, width: headR * 0.38, height: headR * 0.70))
+        ctx.addEllipse(in: headRect); ctx.clip()
+        ctx.fill(CGRect(x: cx - headR, y: headY - headR * 0.28, width: headR * 0.35, height: headR * 0.60))
+        ctx.fill(CGRect(x: cx + headR * 0.65, y: headY - headR * 0.28, width: headR * 0.35, height: headR * 0.60))
         ctx.restoreGState()
 
-        // Round reading glasses
-        ctx.setStrokeColor(CGColor(gray: 0.15, alpha: 1))
-        ctx.setLineWidth(s * 0.016)
-        for dir: CGFloat in [-1, 1] {
-            let gx = cx + dir * headR * 0.32
-            let gy = headY + headR * 0.02
-            let gr = headR * 0.23
-            ctx.addEllipse(in: CGRect(x: gx - gr, y: gy - gr, width: gr * 2, height: gr * 2))
-        }
-        ctx.strokePath()
-        // Bridge
-        ctx.move(to: CGPoint(x: cx - headR * 0.09, y: headY + headR * 0.04))
-        ctx.addLine(to: CGPoint(x: cx + headR * 0.09, y: headY + headR * 0.04))
-        ctx.strokePath()
-        // Temple arms
-        for dir: CGFloat in [-1, 1] {
-            ctx.move(to: CGPoint(x: cx + dir * (headR * 0.32 + headR * 0.23), y: headY + headR * 0.02))
-            ctx.addLine(to: CGPoint(x: cx + dir * headR * 0.85, y: headY - headR * 0.05))
-        }
-        ctx.strokePath()
+        // Round glasses
+        let gy = headY + headR * 0.02
+        drawRoundGlasses(ctx, cx: cx, gy: gy, headR: headR, s: s)
 
-        // Half-lidded unamused eyes behind glasses
-        let eyeY = headY + headR * 0.0
-        let sp = headR * 0.32
-        let ew = headR * 0.18, eh = headR * 0.22
-        for dir: CGFloat in [-1, 1] {
-            let ex = cx + dir * sp
-            ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ew - 1, y: eyeY - eh - 1, width: (ew + 1) * 2, height: (eh + 1) * 2))
-            ctx.setFillColor(CGColor(gray: 0.90, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ew, y: eyeY - eh, width: ew * 2, height: eh * 2))
-            let pw = ew * 0.55, ph = eh * 0.55
-            ctx.setFillColor(CGColor(red: 0.25, green: 0.18, blue: 0.12, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - pw, y: eyeY - ph, width: pw * 2, height: ph * 2))
-            let hlR = ew * 0.22
-            ctx.setFillColor(CGColor(gray: 0.9, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex + ew * 0.15 - hlR / 2, y: eyeY + eh * 0.15 - hlR / 2, width: hlR, height: hlR))
-            // Heavy drooping upper eyelid — "I don't care" look
-            ctx.setFillColor(skin)
-            ctx.fillEllipse(in: CGRect(x: ex - ew * 1.15, y: eyeY - eh * 0.05, width: ew * 2.3, height: eh * 1.2))
-        }
+        // Half-lidded unamused eyes
+        let eyeY = headY - headR * 0.0
+        drawEyes(ctx, cx: cx, eyeY: eyeY, spacing: headR * 0.33, ew: headR * 0.17, eh: headR * 0.20, skin: skin, halfLid: 0.50, pupilScale: 0.50)
 
-        // Gray walrus mustache — thick and wide
+        // Gray mustache
+        ctx.setFillColor(CGColor(gray: 0.48, alpha: 1))
         let mustY = headY - headR * 0.25
-        ctx.setFillColor(CGColor(gray: 0.50, alpha: 1))
-        // Thick mustache shape
-        ctx.move(to: CGPoint(x: cx - headR * 0.35, y: mustY))
+        ctx.move(to: CGPoint(x: cx - headR * 0.32, y: mustY))
         ctx.addQuadCurve(to: CGPoint(x: cx, y: mustY + headR * 0.05),
-                         control: CGPoint(x: cx - headR * 0.18, y: mustY + headR * 0.12))
-        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.35, y: mustY),
-                         control: CGPoint(x: cx + headR * 0.18, y: mustY + headR * 0.12))
-        ctx.addQuadCurve(to: CGPoint(x: cx, y: mustY - headR * 0.08),
-                         control: CGPoint(x: cx + headR * 0.15, y: mustY - headR * 0.02))
-        ctx.addQuadCurve(to: CGPoint(x: cx - headR * 0.35, y: mustY),
-                         control: CGPoint(x: cx - headR * 0.15, y: mustY - headR * 0.02))
+                         control: CGPoint(x: cx - headR * 0.15, y: mustY + headR * 0.10))
+        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.32, y: mustY),
+                         control: CGPoint(x: cx + headR * 0.15, y: mustY + headR * 0.10))
+        ctx.addLine(to: CGPoint(x: cx + headR * 0.28, y: mustY - headR * 0.04))
+        ctx.addQuadCurve(to: CGPoint(x: cx - headR * 0.28, y: mustY - headR * 0.04),
+                         control: CGPoint(x: cx, y: mustY - headR * 0.01))
         ctx.fillPath()
 
-        // Grumpy downturned mouth below mustache
+        // Grumpy frown
+        let my = headY - headR * 0.46
         ctx.setStrokeColor(CGColor(gray: 0.1, alpha: 1))
-        ctx.setLineWidth(max(s * 0.016, 1.2))
-        ctx.setLineCap(.round)
-        let mouthY = headY - headR * 0.48
-        ctx.addArc(center: CGPoint(x: cx, y: mouthY - headR * 0.05),
-                   radius: headR * 0.13,
-                   startAngle: .pi * 0.2,
-                   endAngle: .pi * 0.8,
-                   clockwise: false)
-        ctx.strokePath()
-        ctx.setLineCap(.butt)
+        ctx.setLineWidth(max(s * 0.016, 1.2)); ctx.setLineCap(.round)
+        ctx.addArc(center: CGPoint(x: cx, y: my - headR * 0.06),
+                   radius: headR * 0.12,
+                   startAngle: .pi * 0.20, endAngle: .pi * 0.80, clockwise: false)
+        ctx.strokePath(); ctx.setLineCap(.butt)
     }
 
     // MARK: - Creed Bratton
 
     private static func drawCreed(_ ctx: CGContext, size s: CGFloat) {
-        let cx = s / 2
-        let headR = s * 0.30
-        let headY = s * 0.60
-        let bodyW = s * 0.26, bodyH = s * 0.20
-        let bodyY = s * 0.25
-
+        let cx = s / 2, headR = s * 0.32, headY = s * 0.61
+        let bodyW = s * 0.26, bodyH = s * 0.20, bodyY = s * 0.25
         let skin = CGColor(red: 0.88, green: 0.78, blue: 0.70, alpha: 1)
-        let shirt = CGColor(red: 0.60, green: 0.58, blue: 0.55, alpha: 1)
-        let shoe = CGColor(gray: 0.20, alpha: 1)
+        let shirt = CGColor(red: 0.58, green: 0.56, blue: 0.52, alpha: 1)
         let whiteHair = CGColor(gray: 0.82, alpha: 1)
 
         drawShadow(ctx, cx: cx, y: bodyY - bodyH / 2 - s * 0.08, w: bodyW, h: s * 0.04)
-        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: shoe, size: s)
-
-        // Body — nondescript gray-green open-collar shirt
-        let bodyRect = CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH)
-        outlinedEllipse(ctx, rect: bodyRect, fill: shirt, outline: ol)
-
-        // Open collar showing skin — no tie
+        drawFeet(ctx, cx: cx, footY: bodyY - bodyH / 2, bodyW: bodyW, fill: CGColor(gray: 0.20, alpha: 1), size: s)
+        outlinedEllipse(ctx, rect: CGRect(x: cx - bodyW / 2, y: bodyY - bodyH / 2, width: bodyW, height: bodyH), fill: shirt, outline: ol)
+        // Open collar
         ctx.setFillColor(skin)
         ctx.move(to: CGPoint(x: cx - bodyW * 0.08, y: bodyY + bodyH * 0.40))
         ctx.addLine(to: CGPoint(x: cx + bodyW * 0.08, y: bodyY + bodyH * 0.40))
-        ctx.addLine(to: CGPoint(x: cx, y: bodyY + bodyH * 0.10))
+        ctx.addLine(to: CGPoint(x: cx, y: bodyY + bodyH * 0.12))
         ctx.fillPath()
-
         drawArms(ctx, cx: cx, bodyY: bodyY, bodyW: bodyW, bodyH: bodyH, fill: shirt, size: s)
 
-        // Head — slightly paler skin
+        // Head
         let headRect = CGRect(x: cx - headR, y: headY - headR, width: headR * 2, height: headR * 2)
         outlinedEllipse(ctx, rect: headRect, fill: skin, outline: ol)
-        headHighlight(ctx, headRect: headRect, cx: cx, headY: headY, headR: headR)
+        headHighlight(ctx, cx: cx, headY: headY, headR: headR)
 
-        // Bald top with sparse wispy white hair on sides
+        // Sparse white hair on sides
         ctx.saveGState()
-        ctx.addEllipse(in: headRect)
-        ctx.clip()
+        ctx.addEllipse(in: headRect); ctx.clip()
         ctx.setFillColor(whiteHair)
-        // Very thin patches on sides — sparse, not solid
-        ctx.fill(CGRect(x: cx - headR, y: headY - headR * 0.10, width: headR * 0.28, height: headR * 0.45))
-        ctx.fill(CGRect(x: cx + headR * 0.72, y: headY - headR * 0.10, width: headR * 0.28, height: headR * 0.45))
+        ctx.fill(CGRect(x: cx - headR, y: headY - headR * 0.10, width: headR * 0.25, height: headR * 0.40))
+        ctx.fill(CGRect(x: cx + headR * 0.75, y: headY - headR * 0.10, width: headR * 0.25, height: headR * 0.40))
         ctx.restoreGState()
-
-        // Wispy tufts sticking out at odd angles
+        // Wispy tufts
         ctx.setStrokeColor(whiteHair)
-        ctx.setLineWidth(s * 0.007)
-        ctx.setLineCap(.round)
+        ctx.setLineWidth(s * 0.006); ctx.setLineCap(.round)
         for dir: CGFloat in [-1, 1] {
-            let baseX = cx + dir * headR * 0.85
-            let baseY = headY + headR * 0.12
-            // Multiple wispy strands
-            ctx.move(to: CGPoint(x: baseX, y: baseY))
-            ctx.addQuadCurve(to: CGPoint(x: baseX + dir * s * 0.04, y: baseY + s * 0.03),
-                             control: CGPoint(x: baseX + dir * s * 0.02, y: baseY + s * 0.04))
-            ctx.move(to: CGPoint(x: baseX, y: baseY - headR * 0.12))
-            ctx.addLine(to: CGPoint(x: baseX + dir * s * 0.03, y: baseY - headR * 0.08))
-            ctx.move(to: CGPoint(x: baseX - dir * headR * 0.05, y: baseY + headR * 0.10))
-            ctx.addLine(to: CGPoint(x: baseX + dir * s * 0.025, y: baseY + headR * 0.15))
+            let bx = cx + dir * headR * 0.88, by = headY + headR * 0.10
+            ctx.move(to: CGPoint(x: bx, y: by))
+            ctx.addLine(to: CGPoint(x: bx + dir * s * 0.025, y: by + s * 0.02))
+            ctx.move(to: CGPoint(x: bx, y: by - headR * 0.12))
+            ctx.addLine(to: CGPoint(x: bx + dir * s * 0.02, y: by - headR * 0.08))
         }
-        ctx.strokePath()
-        ctx.setLineCap(.butt)
+        ctx.strokePath(); ctx.setLineCap(.butt)
 
-        // Wrinkle lines — forehead and around eyes
-        ctx.setStrokeColor(CGColor(red: 0.72, green: 0.62, blue: 0.55, alpha: 0.4))
-        ctx.setLineWidth(s * 0.005)
-        // Forehead wrinkles
-        ctx.move(to: CGPoint(x: cx - headR * 0.30, y: headY + headR * 0.30))
-        ctx.addLine(to: CGPoint(x: cx + headR * 0.30, y: headY + headR * 0.32))
-        ctx.move(to: CGPoint(x: cx - headR * 0.25, y: headY + headR * 0.22))
-        ctx.addLine(to: CGPoint(x: cx + headR * 0.25, y: headY + headR * 0.23))
-        ctx.strokePath()
-        // Crow's feet
-        for dir: CGFloat in [-1, 1] {
-            let cfX = cx + dir * headR * 0.55
-            let cfY = headY - headR * 0.05
-            ctx.move(to: CGPoint(x: cfX, y: cfY + headR * 0.06))
-            ctx.addLine(to: CGPoint(x: cfX + dir * headR * 0.10, y: cfY + headR * 0.10))
-            ctx.move(to: CGPoint(x: cfX, y: cfY))
-            ctx.addLine(to: CGPoint(x: cfX + dir * headR * 0.10, y: cfY))
-            ctx.move(to: CGPoint(x: cfX, y: cfY - headR * 0.06))
-            ctx.addLine(to: CGPoint(x: cfX + dir * headR * 0.10, y: cfY - headR * 0.08))
-        }
+        // Wrinkles
+        ctx.setStrokeColor(CGColor(red: 0.72, green: 0.62, blue: 0.55, alpha: 0.35))
+        ctx.setLineWidth(s * 0.004)
+        ctx.move(to: CGPoint(x: cx - headR * 0.28, y: headY + headR * 0.28))
+        ctx.addLine(to: CGPoint(x: cx + headR * 0.28, y: headY + headR * 0.30))
+        ctx.move(to: CGPoint(x: cx - headR * 0.22, y: headY + headR * 0.22))
+        ctx.addLine(to: CGPoint(x: cx + headR * 0.22, y: headY + headR * 0.23))
         ctx.strokePath()
 
-        // Wild unfocused eyes — pupils looking in different directions
+        // Unfocused eyes — pupils looking different directions
         let eyeY = headY - headR * 0.05
-        let sp = headR * 0.38
-        let ew = headR * 0.24, eh = headR * 0.30
-        for (i, dir): (Int, CGFloat) in [(-1 as CGFloat), (1 as CGFloat)].enumerated().map({ ($0.offset, $0.element) }) {
-            let ex = cx + dir * sp
-            ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ew - 1.5, y: eyeY - eh - 1.5, width: (ew + 1.5) * 2, height: (eh + 1.5) * 2))
-            // Slightly yellowish sclera
-            ctx.setFillColor(CGColor(red: 0.98, green: 0.96, blue: 0.90, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex - ew, y: eyeY - eh, width: ew * 2, height: eh * 2))
-            // Pupils offset in opposite directions — unfocused
-            let pw = ew * 0.48, ph = eh * 0.48
-            let pupilOffsetX = (i == 0) ? -ew * 0.18 : ew * 0.20
-            let pupilOffsetY = (i == 0) ? eh * 0.08 : -eh * 0.10
-            // Lighter iris ring
-            ctx.setFillColor(CGColor(red: 0.50, green: 0.55, blue: 0.55, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex + pupilOffsetX - pw * 1.3, y: eyeY + pupilOffsetY - ph * 1.3,
-                                       width: pw * 2.6, height: ph * 2.6))
-            ctx.setFillColor(CGColor(gray: 0.1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex + pupilOffsetX - pw, y: eyeY + pupilOffsetY - ph, width: pw * 2, height: ph * 2))
-            let hlR = ew * 0.25
-            ctx.setFillColor(CGColor(gray: 1, alpha: 1))
-            ctx.fillEllipse(in: CGRect(x: ex + pupilOffsetX + ew * 0.18 - hlR / 2,
-                                       y: eyeY + pupilOffsetY + eh * 0.22 - hlR / 2, width: hlR, height: hlR))
-        }
+        drawEyes(ctx, cx: cx, eyeY: eyeY, spacing: headR * 0.36, ew: headR * 0.22, eh: headR * 0.28, skin: skin,
+                 pupilOffsets: [(-headR * 0.04, headR * 0.02), (headR * 0.05, -headR * 0.03)])
 
-        // Thin sparse eyebrows
-        ctx.setStrokeColor(CGColor(gray: 0.72, alpha: 0.5))
-        ctx.setLineWidth(s * 0.008)
-        ctx.setLineCap(.round)
-        for dir: CGFloat in [-1, 1] {
-            let bx = cx + dir * sp
-            ctx.move(to: CGPoint(x: bx - headR * 0.12, y: eyeY + eh + headR * 0.06))
-            ctx.addLine(to: CGPoint(x: bx + headR * 0.10, y: eyeY + eh + headR * 0.08))
-        }
-        ctx.strokePath()
-        ctx.setLineCap(.butt)
-
-        // Mysterious asymmetric half-smile
+        // Mysterious half-smile — asymmetric
+        let my = headY - headR * 0.42
         ctx.setStrokeColor(CGColor(gray: 0.1, alpha: 1))
-        ctx.setLineWidth(max(s * 0.015, 1.2))
-        ctx.setLineCap(.round)
-        let mouthY = headY - headR * 0.42
-        // Left side — slightly down
-        ctx.move(to: CGPoint(x: cx - headR * 0.16, y: mouthY - headR * 0.03))
-        ctx.addQuadCurve(to: CGPoint(x: cx - headR * 0.02, y: mouthY),
-                         control: CGPoint(x: cx - headR * 0.08, y: mouthY - headR * 0.01))
+        ctx.setLineWidth(max(s * 0.015, 1.2)); ctx.setLineCap(.round)
+        ctx.move(to: CGPoint(x: cx - headR * 0.14, y: my - headR * 0.02))
+        ctx.addLine(to: CGPoint(x: cx, y: my))
         ctx.strokePath()
-        // Right side — curves up knowingly
-        ctx.move(to: CGPoint(x: cx - headR * 0.02, y: mouthY))
-        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.18, y: mouthY + headR * 0.07),
-                         control: CGPoint(x: cx + headR * 0.10, y: mouthY + headR * 0.02))
-        ctx.strokePath()
-        ctx.setLineCap(.butt)
+        ctx.move(to: CGPoint(x: cx, y: my))
+        ctx.addQuadCurve(to: CGPoint(x: cx + headR * 0.16, y: my + headR * 0.06),
+                         control: CGPoint(x: cx + headR * 0.10, y: my + headR * 0.01))
+        ctx.strokePath(); ctx.setLineCap(.butt)
     }
 }
