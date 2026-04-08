@@ -50,7 +50,9 @@ enum OnePieceCharacterGenerator {
     static func character(for sessionID: String) -> Character {
         var s = seed(from: sessionID)
         s = s &* 6364136223846793005 &+ 1442695040888963407
-        return Character(rawValue: Int(s >> 33) % Character.allCases.count)!
+        let roll = Int(s >> 33) % 10
+        if roll < 3 { return Character(rawValue: 0)! }  // 30% star character
+        return Character(rawValue: 1 + (roll - 3) % (Character.allCases.count - 1))!
     }
 
     // MARK: - Generate

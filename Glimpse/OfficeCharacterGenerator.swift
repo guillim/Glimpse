@@ -8,8 +8,8 @@ enum OfficeCharacterGenerator {
     // MARK: - Character Definitions
 
     enum Character: Int, CaseIterable {
-        case michael = 0
-        case dwight
+        case dwight = 0
+        case michael
         case jim
         case pam
         case angela
