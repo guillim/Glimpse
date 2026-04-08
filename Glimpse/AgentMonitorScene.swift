@@ -27,6 +27,17 @@ final class AgentMonitorScene: SKScene {
         backgroundColor = .clear
         addChild(emptyLabel)
         emptyLabel.position = CGPoint(x: size.width / 2, y: size.height / 2)
+
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(styleDidChange),
+            name: .characterStyleDidChange, object: nil
+        )
+    }
+
+    @objc private func styleDidChange() {
+        for node in characterNodes.values {
+            node.regenerateTexture()
+        }
     }
 
     override func didChangeSize(_ oldSize: CGSize) {

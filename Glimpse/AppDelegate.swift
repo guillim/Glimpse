@@ -118,7 +118,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 item.target = self
                 item.representedObject = session.id
 
-                let bodyColor = CharacterGenerator.traits(for: session.id).bodyColor
+                let bodyColor: NSColor
+                switch CharacterStyle.current {
+                case .kawaii:
+                    bodyColor = CharacterGenerator.traits(for: session.id).bodyColor
+                case .starwars:
+                    bodyColor = StarWarsCharacterGenerator.color(for: session.id)
+                }
                 let dot = NSAttributedString(string: "● ", attributes: [.foregroundColor: bodyColor, .font: NSFont.systemFont(ofSize: 14)])
                 let text = NSAttributedString(string: title, attributes: [.font: NSFont.menuFont(ofSize: 0)])
                 let combined = NSMutableAttributedString()
@@ -131,6 +137,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(.separator())
+
+        // Style submenu
+        let styleMenu = NSMenu()
+        for style in CharacterStyle.allCases {
+            let item = NSMenuItem(title: style.displayName, action: #selector(styleSelected(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = style.rawValue
+            if style == CharacterStyle.current {
+                item.state = .on
+            }
+            styleMenu.addItem(item)
+        }
+        let styleItem = NSMenuItem(title: "Style", action: nil, keyEquivalent: "")
+        styleItem.submenu = styleMenu
+        menu.addItem(styleItem)
+
+        menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Exit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: ""))
         statusItem?.menu = menu
 
@@ -141,6 +164,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func menuItemClicked(_ sender: NSMenuItem) {
         guard let sessionID = sender.representedObject as? String else { return }
         desktopWindowController?.activateAppForSession(sessionID)
+    }
+
+    @objc private func styleSelected(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let style = CharacterStyle(rawValue: raw) else { return }
+        CharacterStyle.current = style
+        rebuildMenu()
     }
 
     private func setupKeyboardShortcut() {

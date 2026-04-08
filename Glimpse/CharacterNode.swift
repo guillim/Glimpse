@@ -11,6 +11,9 @@ final class CharacterNode: SKNode {
     private let bodySprite: SKSpriteNode
     private let cardBG: SKShapeNode
     private var glowNode: SKNode?
+    /// Office-style 3D effect nodes (nil when using kawaii style).
+    private var shadowNode: SKSpriteNode?
+    private var highlightNode: SKSpriteNode?
     private let pillBG: SKShapeNode
     private let statusDot: SKShapeNode
     private let activityWordLabel: SKLabelNode
@@ -41,15 +44,8 @@ final class CharacterNode: SKNode {
         self.projectName = projectName
         self.characterSize = size
 
-        // Body sprite from procedural generator
-        let cgImage = CharacterGenerator.generate(sessionID: sessionID, size: size)
-        let texture: SKTexture
-        if let img = cgImage {
-            texture = SKTexture(cgImage: img)
-        } else {
-            texture = SKTexture()
-        }
-        texture.filteringMode = .nearest  // pixel art — no smoothing
+        // Body sprite from active character style
+        let texture = Self.makeTexture(sessionID: sessionID, size: size)
         bodySprite = SKSpriteNode(texture: texture, size: CGSize(width: size, height: size))
 
         // Card background behind character
@@ -64,6 +60,12 @@ final class CharacterNode: SKNode {
         // Sprite in upper portion of card
         let spriteY = cardH * 0.22
         bodySprite.position = CGPoint(x: 0, y: spriteY)
+
+        // Office-style 3D effect: shadow beneath character + highlight overlay
+        if CharacterStyle.current == .starwars {
+            shadowNode = Self.makeShadowNode(size: size, spriteY: spriteY)
+            highlightNode = Self.makeHighlightNode(size: size, spriteY: spriteY)
+        }
 
         // Status row: colored pill with glowing dot + uppercase text
         let statusY = spriteY - size * 0.5 - size * 0.15
@@ -201,7 +203,9 @@ final class CharacterNode: SKNode {
         super.init()
 
         addChild(cardBG)
+        if let shadow = shadowNode { addChild(shadow) }
         addChild(bodySprite)
+        if let highlight = highlightNode { addChild(highlight) }
         addChild(pillBG)
         addChild(statusDot)
         addChild(activityWordLabel)
@@ -624,6 +628,22 @@ final class CharacterNode: SKNode {
     // MARK: - Lifecycle Animations
 
     private func startBreathing() {
+        if CharacterStyle.current == .starwars {
+            startOfficeAnimations()
+        } else {
+            startKawaiiBreathing()
+        }
+    }
+
+    private func stopBreathing() {
+        bodySprite.removeAction(forKey: "breathing")
+        bodySprite.removeAction(forKey: "bobbing")
+        bodySprite.removeAction(forKey: "sway")
+        shadowNode?.removeAction(forKey: "shadowSway")
+        highlightNode?.removeAction(forKey: "highlightDrift")
+    }
+
+    private func startKawaiiBreathing() {
         let breathe = SKAction.sequence([
             .scaleY(to: 1.03, duration: 1.8),
             .scaleY(to: 0.97, duration: 1.8)
@@ -637,9 +657,63 @@ final class CharacterNode: SKNode {
         bodySprite.run(.repeatForever(bob), withKey: "bobbing")
     }
 
-    private func stopBreathing() {
-        bodySprite.removeAction(forKey: "breathing")
-        bodySprite.removeAction(forKey: "bobbing")
+    // MARK: - Office 3D Animations
+
+    private func startOfficeAnimations() {
+        // 1. Gentle sway — subtle rotation ±1.5 degrees + slight X drift
+        let swayDuration: TimeInterval = 3.5
+        let swayAngle = CGFloat.pi / 120  // ~1.5 degrees
+        let sway = SKAction.sequence([
+            .group([
+                .rotate(toAngle: swayAngle, duration: swayDuration, shortestUnitArc: true),
+                .moveBy(x: 1.5, y: 0, duration: swayDuration)
+            ]),
+            .group([
+                .rotate(toAngle: -swayAngle, duration: swayDuration, shortestUnitArc: true),
+                .moveBy(x: -1.5, y: 0, duration: swayDuration)
+            ]),
+        ])
+        bodySprite.run(.repeatForever(sway), withKey: "sway")
+
+        // 2. Breathing — subtle Y-scale pulse
+        let breathe = SKAction.sequence([
+            .scaleY(to: 1.015, duration: 2.2),
+            .scaleY(to: 0.985, duration: 2.2)
+        ])
+        bodySprite.run(.repeatForever(breathe), withKey: "breathing")
+
+        // 3. Gentle vertical bob
+        let bob = SKAction.sequence([
+            .moveBy(x: 0, y: 1.5, duration: 2.2),
+            .moveBy(x: 0, y: -1.5, duration: 2.2)
+        ])
+        bodySprite.run(.repeatForever(bob), withKey: "bobbing")
+
+        // 4. Shadow counter-sway — shifts opposite to the character sway
+        if let shadow = shadowNode {
+            let shadowSway = SKAction.sequence([
+                .moveBy(x: -2, y: 0, duration: swayDuration),
+                .moveBy(x: 2, y: 0, duration: swayDuration),
+            ])
+            shadow.run(.repeatForever(shadowSway), withKey: "shadowSway")
+        }
+
+        // 5. Highlight drift — light source wanders across the character
+        if let highlight = highlightNode {
+            let drift = SKAction.sequence([
+                .moveBy(x: 8, y: 3, duration: 4.0),
+                .moveBy(x: -5, y: -6, duration: 3.5),
+                .moveBy(x: -3, y: 3, duration: 3.0),
+            ])
+            highlight.run(.repeatForever(drift), withKey: "highlightDrift")
+
+            // Subtle pulse of the highlight opacity
+            let pulse = SKAction.sequence([
+                .fadeAlpha(to: 0.18, duration: 3.0),
+                .fadeAlpha(to: 0.08, duration: 3.0),
+            ])
+            highlight.run(.repeatForever(pulse), withKey: "highlightPulse")
+        }
     }
 
     func animateAppear() {
@@ -683,5 +757,137 @@ final class CharacterNode: SKNode {
         statusDetailLabel.setScale(s)
         goodbyeLabel.setScale(s)
         glowNode?.setScale(s)
+        shadowNode?.setScale(s)
+        highlightNode?.setScale(s)
+    }
+
+    // MARK: - Style Support
+
+    /// Build a texture for the given session using the current character style.
+    static func makeTexture(sessionID: String, size: CGFloat) -> SKTexture {
+        let cgImage: CGImage?
+        switch CharacterStyle.current {
+        case .kawaii:
+            cgImage = CharacterGenerator.generate(sessionID: sessionID, size: size)
+        case .starwars:
+            cgImage = StarWarsCharacterGenerator.generate(sessionID: sessionID, size: size)
+        }
+        let texture: SKTexture
+        if let img = cgImage {
+            texture = SKTexture(cgImage: img)
+        } else {
+            texture = SKTexture()
+        }
+        texture.filteringMode = CharacterStyle.current == .kawaii ? .nearest : .linear
+        return texture
+    }
+
+    /// Regenerate the body sprite texture and 3D effect nodes after a style change.
+    func regenerateTexture() {
+        let texture = Self.makeTexture(sessionID: sessionID, size: characterSize)
+        bodySprite.texture = texture
+
+        // Restart animations for the new style
+        stopBreathing()
+
+        // Remove old office 3D nodes
+        shadowNode?.removeFromParent()
+        shadowNode = nil
+        highlightNode?.removeFromParent()
+        highlightNode = nil
+
+        // Add office 3D nodes if switching to office style
+        if CharacterStyle.current == .starwars {
+            let cardH = characterSize * 2.6
+            let spriteY = cardH * 0.22
+            let shadow = Self.makeShadowNode(size: characterSize, spriteY: spriteY)
+            insertChild(shadow, at: 1)  // after cardBG, before bodySprite
+            shadowNode = shadow
+
+            let highlight = Self.makeHighlightNode(size: characterSize, spriteY: spriteY)
+            // Insert after bodySprite
+            let spriteIndex = children.firstIndex(of: bodySprite).map { $0 + 1 } ?? 2
+            insertChild(highlight, at: spriteIndex)
+            highlightNode = highlight
+        }
+
+        // Reset bodySprite rotation/position offset from office sway
+        bodySprite.zRotation = 0
+
+        startBreathing()
+    }
+
+    // MARK: - Office 3D Node Factories
+
+    /// Elliptical shadow beneath the character that shifts with sway.
+    private static func makeShadowNode(size: CGFloat, spriteY: CGFloat) -> SKSpriteNode {
+        let shadowW = size * 0.6
+        let shadowH = size * 0.12
+        let pixW = Int(shadowW * 2)
+        let pixH = Int(shadowH * 2)
+
+        guard let ctx = CGContext(
+            data: nil, width: pixW, height: pixH, bitsPerComponent: 8,
+            bytesPerRow: pixW * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return SKSpriteNode()
+        }
+
+        // Soft elliptical shadow via radial gradient
+        let colors: [CGFloat] = [0, 0, 0, 0.25,  0, 0, 0, 0]
+        let locations: [CGFloat] = [0, 1]
+        if let gradient = CGGradient(colorSpace: CGColorSpaceCreateDeviceRGB(),
+                                      colorComponents: colors, locations: locations, count: 2) {
+            ctx.drawRadialGradient(gradient,
+                                   startCenter: CGPoint(x: pixW / 2, y: pixH / 2), startRadius: 0,
+                                   endCenter: CGPoint(x: pixW / 2, y: pixH / 2), endRadius: CGFloat(pixW) / 2,
+                                   options: [])
+        }
+
+        guard let cgImage = ctx.makeImage() else { return SKSpriteNode() }
+        let texture = SKTexture(cgImage: cgImage)
+        let node = SKSpriteNode(texture: texture, size: CGSize(width: shadowW, height: shadowH))
+        node.position = CGPoint(x: 0, y: spriteY - size * 0.48)
+        node.zPosition = -1.8  // between card bg and body sprite
+        node.alpha = 0.5
+        return node
+    }
+
+    /// Semi-transparent radial highlight that drifts to simulate a moving light source.
+    private static func makeHighlightNode(size: CGFloat, spriteY: CGFloat) -> SKSpriteNode {
+        let hlSize = size * 0.7
+        let pix = Int(hlSize * 2)
+
+        guard let ctx = CGContext(
+            data: nil, width: pix, height: pix, bitsPerComponent: 8,
+            bytesPerRow: pix * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return SKSpriteNode()
+        }
+
+        // Soft white radial glow
+        let colors: [CGFloat] = [1, 1, 1, 0.5,  1, 1, 1, 0]
+        let locations: [CGFloat] = [0, 1]
+        if let gradient = CGGradient(colorSpace: CGColorSpaceCreateDeviceRGB(),
+                                      colorComponents: colors, locations: locations, count: 2) {
+            let center = CGPoint(x: pix / 2, y: pix / 2)
+            ctx.drawRadialGradient(gradient,
+                                   startCenter: center, startRadius: 0,
+                                   endCenter: center, endRadius: CGFloat(pix) / 2,
+                                   options: [])
+        }
+
+        guard let cgImage = ctx.makeImage() else { return SKSpriteNode() }
+        let texture = SKTexture(cgImage: cgImage)
+        let node = SKSpriteNode(texture: texture, size: CGSize(width: hlSize, height: hlSize))
+        node.position = CGPoint(x: -size * 0.15, y: spriteY + size * 0.15)
+        node.zPosition = 0.5  // just above body sprite
+        node.alpha = 0.12
+        node.blendMode = .add  // additive blending for natural light effect
+        return node
     }
 }
