@@ -33,6 +33,7 @@ Glimpse must stay invisible on the system: low CPU, low RAM, minimal GPU. If a p
 - Diff behavior between main and your changes when relevant.
 - Ask yourself: "Would a staff engineer approve this?"
 - Run tests, check logs, demonstrate correctness.
+- update the README.md if necessary
 
 ## Subagent Strategy
 - Use subagents for research and codebase exploration — keep the main context window clean.
