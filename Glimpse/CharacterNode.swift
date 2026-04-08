@@ -67,124 +67,108 @@ final class CharacterNode: SKNode {
             highlightNode = Self.makeHighlightNode(size: size, spriteY: spriteY)
         }
 
-        // Status row: colored pill with glowing dot + uppercase text
-        let statusY = spriteY - size * 0.5 - size * 0.15
-        let pillW = size * 0.85
-        let pillH = size * 0.22
-        let pillR = pillH / 2
+        // Top row Y: near top edge of card
+        let topRowY = cardH * 0.5 - size * 0.12
+        let padding = size * 0.12
 
-        pillBG = SKShapeNode(rectOf: CGSize(width: pillW, height: pillH), cornerRadius: pillR)
-        pillBG.fillColor = .init(red: 0.39, green: 0.39, blue: 0.47, alpha: 0.12)
-        pillBG.strokeColor = .init(red: 0.39, green: 0.39, blue: 0.47, alpha: 0.2)
-        pillBG.lineWidth = 1
-        pillBG.position = CGPoint(x: 0, y: statusY)
+        // ── Top-left: activity dot + verb + duration ──
+        pillBG = SKShapeNode(rectOf: CGSize(width: 1, height: 1), cornerRadius: 0)
+        pillBG.fillColor = .clear
+        pillBG.strokeColor = .clear
+        pillBG.isHidden = true  // No pill background in new layout
 
-        let dotR = max(size * 0.04, 3)
+        let dotR = max(size * 0.03, 2.5)
         statusDot = SKShapeNode(circleOfRadius: dotR)
         statusDot.fillColor = .init(red: 0.4, green: 0.4, blue: 0.47, alpha: 1)
         statusDot.strokeColor = .clear
-        statusDot.glowWidth = max(size * 0.03, 2)
-        statusDot.position = CGPoint(x: -pillW * 0.32, y: statusY)
+        statusDot.glowWidth = max(size * 0.02, 1.5)
+        statusDot.position = CGPoint(x: -cardW * 0.5 + padding, y: topRowY)
 
         activityWordLabel = SKLabelNode(fontNamed: "Menlo-Bold")
         activityWordLabel.text = "IDLE"
-        activityWordLabel.fontSize = max(size * 0.11, 8)
+        activityWordLabel.fontSize = max(size * 0.09, 7)
         activityWordLabel.fontColor = .init(red: 0.53, green: 0.53, blue: 0.58, alpha: 1)
-        activityWordLabel.position = CGPoint(x: size * 0.03, y: statusY)
+        activityWordLabel.position = CGPoint(x: -cardW * 0.5 + padding + dotR * 2 + 4, y: topRowY)
         activityWordLabel.verticalAlignmentMode = .center
-        activityWordLabel.horizontalAlignmentMode = .center
+        activityWordLabel.horizontalAlignmentMode = .left
 
-        // Duration label (outside pill, to the right)
         durationLabel = SKLabelNode(fontNamed: "Menlo")
         durationLabel.text = ""
-        durationLabel.fontSize = max(size * 0.09, 7)
+        durationLabel.fontSize = max(size * 0.08, 6)
         durationLabel.fontColor = .init(red: 0.45, green: 0.45, blue: 0.52, alpha: 1)
-        durationLabel.position = CGPoint(x: pillW * 0.55 + 4, y: statusY)
+        // Position dynamically after verb — set initial position, updated in updateActivity
+        durationLabel.position = CGPoint(x: 0, y: topRowY)
         durationLabel.verticalAlignmentMode = .center
         durationLabel.horizontalAlignmentMode = .left
 
-        // Divider line between status row and project info
-        let dividerY = statusY - size * 0.18
-        let dividerPath = CGMutablePath()
-        dividerPath.move(to: CGPoint(x: -cardW * 0.35, y: 0))
-        dividerPath.addLine(to: CGPoint(x: cardW * 0.35, y: 0))
-        dividerNode = SKShapeNode(path: dividerPath)
-        dividerNode.strokeColor = .init(red: 0.3, green: 0.3, blue: 0.4, alpha: 0.3)
-        dividerNode.lineWidth = 1
-        dividerNode.position = CGPoint(x: 0, y: dividerY)
-
-        // Project label: "folder:" prefix (dim) + project name (brighter)
-        let projectFontSize = max(size * 0.09, 7)
-        let projectY = dividerY - size * 0.06
+        // ── Top-right: 📁 + project name ──
+        let projectFontSize = max(size * 0.08, 6)
 
         folderPrefixLabel = SKLabelNode(fontNamed: "Menlo")
-        folderPrefixLabel.text = "folder:"
+        folderPrefixLabel.text = "📁"
         folderPrefixLabel.fontSize = projectFontSize
-        folderPrefixLabel.fontColor = .init(red: 0.35, green: 0.35, blue: 0.42, alpha: 1)
+        folderPrefixLabel.fontColor = .init(red: 0.45, green: 0.45, blue: 0.52, alpha: 1)
         folderPrefixLabel.verticalAlignmentMode = .center
         folderPrefixLabel.horizontalAlignmentMode = .right
 
         projectLabel = SKLabelNode(fontNamed: "Menlo")
-        let truncatedName = projectName.count > 15
-            ? String(projectName.prefix(14)) + "…"
-            : projectName
-        projectLabel.text = truncatedName
+        // Initial truncation — will be refined by repositionFolder()
+        projectLabel.text = Self.truncateProjectName(projectName, maxChars: 8)
         projectLabel.fontSize = projectFontSize
         projectLabel.fontColor = .init(red: 0.5, green: 0.5, blue: 0.56, alpha: 1)
         projectLabel.verticalAlignmentMode = .center
-        projectLabel.horizontalAlignmentMode = .left
+        projectLabel.horizontalAlignmentMode = .right
 
-        // Position prefix and name as a centered pair with 3pt gap
-        let prefixWidth = folderPrefixLabel.frame.width
-        let nameWidth = projectLabel.frame.width
-        let totalWidth = prefixWidth + 3 + nameWidth
-        folderPrefixLabel.position = CGPoint(x: -totalWidth / 2 + prefixWidth, y: projectY)
-        projectLabel.position = CGPoint(x: -totalWidth / 2 + prefixWidth + 3, y: projectY)
+        // Position right-aligned — refined dynamically by repositionFolder()
+        projectLabel.position = CGPoint(x: cardW * 0.5 - padding, y: topRowY)
+        folderPrefixLabel.position = CGPoint(x: cardW * 0.5 - padding - projectLabel.frame.width - 2, y: topRowY)
 
-        // "working on:" section
-        let sectionFontSize = max(size * 0.09, 7)
+        // Divider — hidden in new layout
+        let dividerPath = CGMutablePath()
+        dividerPath.move(to: CGPoint(x: -cardW * 0.35, y: 0))
+        dividerPath.addLine(to: CGPoint(x: cardW * 0.35, y: 0))
+        dividerNode = SKShapeNode(path: dividerPath)
+        dividerNode.strokeColor = .clear
+        dividerNode.lineWidth = 0
+        dividerNode.isHidden = true
+
+        // ── Below character: topic + status detail (more room now) ──
         let contentFontSize = max(size * 0.09, 7)
         let sectionPadding: CGFloat = 8
         let sectionLeftX = -cardW * 0.5 + sectionPadding
         let sectionMaxWidth = cardW - sectionPadding * 2
 
-        // "working on:" prefix — hidden, kept for node tree compatibility
-        let workingOnY = projectY - projectFontSize - 3
+        // Topic — positioned right below the character sprite
+        let topicY = spriteY - size * 0.5 - size * 0.1
         workingOnPrefix = SKLabelNode(fontNamed: "Menlo")
         workingOnPrefix.text = ""
-        workingOnPrefix.fontSize = sectionFontSize
-        workingOnPrefix.fontColor = .init(red: 0.35, green: 0.35, blue: 0.42, alpha: 1)
-        workingOnPrefix.position = CGPoint(x: sectionLeftX, y: workingOnY)
-        workingOnPrefix.verticalAlignmentMode = .top
-        workingOnPrefix.horizontalAlignmentMode = .left
+        workingOnPrefix.fontSize = contentFontSize
+        workingOnPrefix.fontColor = .clear
+        workingOnPrefix.isHidden = true
 
-        // Topic hashtags — single line
         topicLabel = SKLabelNode(fontNamed: "Menlo")
         topicLabel.text = ""
-        topicLabel.fontSize = sectionFontSize
+        topicLabel.fontSize = contentFontSize
         topicLabel.fontColor = .init(red: 0.78, green: 0.72, blue: 0.45, alpha: 1)
         topicLabel.numberOfLines = 1
         topicLabel.preferredMaxLayoutWidth = sectionMaxWidth
-        topicLabel.position = CGPoint(x: sectionLeftX, y: workingOnY)
+        topicLabel.position = CGPoint(x: sectionLeftX, y: topicY)
         topicLabel.verticalAlignmentMode = .top
         topicLabel.horizontalAlignmentMode = .left
 
-        // "status:" prefix — hidden, kept for node tree compatibility
-        let statusSectionY = workingOnY - sectionFontSize - 3
+        // Status detail — right below topic, more lines available now
+        let statusSectionY = topicY - contentFontSize - 3
         statusPrefix = SKLabelNode(fontNamed: "Menlo")
         statusPrefix.text = ""
-        statusPrefix.fontSize = sectionFontSize
-        statusPrefix.fontColor = .init(red: 0.35, green: 0.35, blue: 0.42, alpha: 1)
-        statusPrefix.position = CGPoint(x: sectionLeftX, y: statusSectionY)
-        statusPrefix.verticalAlignmentMode = .top
-        statusPrefix.horizontalAlignmentMode = .left
+        statusPrefix.fontSize = contentFontSize
+        statusPrefix.fontColor = .clear
+        statusPrefix.isHidden = true
 
-        // Status detail — shows last sentence of assistant's last message
         statusDetailLabel = SKLabelNode(fontNamed: "Menlo-Bold")
         statusDetailLabel.text = ""
         statusDetailLabel.fontSize = contentFontSize
         statusDetailLabel.fontColor = .init(red: 0.5, green: 0.5, blue: 0.56, alpha: 1)
-        statusDetailLabel.numberOfLines = 5
+        statusDetailLabel.numberOfLines = 6
         statusDetailLabel.preferredMaxLayoutWidth = sectionMaxWidth
         statusDetailLabel.position = CGPoint(x: sectionLeftX, y: statusSectionY)
         statusDetailLabel.verticalAlignmentMode = .top
@@ -218,6 +202,9 @@ final class CharacterNode: SKNode {
         addChild(statusPrefix)
         addChild(statusDetailLabel)
         addChild(goodbyeLabel)
+
+        // Initial folder positioning based on default "IDLE" verb width
+        repositionFolder()
     }
 
     required init?(coder: NSCoder) { fatalError("Not implemented") }
@@ -358,8 +345,12 @@ final class CharacterNode: SKNode {
             .fadeIn(withDuration: 0.12)
         ]))
 
-        // Show duration outside the pill for standby states
+        // Show duration next to verb for standby states
         durationLabel.text = Self.showsDuration(activity) ? (idleDurationText ?? "") : ""
+        // Position duration label right after the verb text
+        durationLabel.position.x = activityWordLabel.position.x + activityWordLabel.frame.width + 4
+        // Reposition folder to avoid overlap with new verb/duration width
+        repositionFolder()
 
         let colors = Self.activityColors(activity)
 
@@ -435,6 +426,41 @@ final class CharacterNode: SKNode {
         case .sleeping, .asking, .done: return true
         default: return false
         }
+    }
+
+    /// Truncate project name to fit within maxChars.
+    static func truncateProjectName(_ name: String, maxChars: Int) -> String {
+        guard name.count > maxChars else { return name }
+        return String(name.prefix(maxChars - 1)) + "…"
+    }
+
+    /// Dynamically reposition the folder label to avoid overlapping the activity labels.
+    /// Computes available right-side space and truncates the project name as needed.
+    private func repositionFolder() {
+        let cardW = characterSize * 2.0
+        let padding = characterSize * 0.12
+        let gap = characterSize * 0.15  // minimum gap between left and right sections
+
+        // Measure left side: dot + verb + duration
+        let leftEdge: CGFloat
+        if durationLabel.text?.isEmpty == false {
+            leftEdge = durationLabel.position.x + durationLabel.frame.width
+        } else {
+            leftEdge = activityWordLabel.position.x + activityWordLabel.frame.width
+        }
+
+        // Available width for emoji + project name on the right
+        let rightEdge = cardW * 0.5 - padding
+        let emojiWidth = characterSize * 0.14  // approximate 📁 width
+        let availableForName = rightEdge - leftEdge - gap - emojiWidth - 4
+
+        // Estimate chars that fit (monospace: ~0.6 * fontSize per char)
+        let charWidth = projectLabel.fontSize * 0.6
+        let maxChars = max(Int(availableForName / charWidth), 3)
+
+        projectLabel.text = Self.truncateProjectName(projectName, maxChars: maxChars)
+        projectLabel.position = CGPoint(x: rightEdge, y: projectLabel.position.y)
+        folderPrefixLabel.position = CGPoint(x: rightEdge - projectLabel.frame.width - 2, y: folderPrefixLabel.position.y)
     }
 
     /// Extract the last sentence from a text block.
