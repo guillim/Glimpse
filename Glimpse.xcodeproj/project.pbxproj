@@ -18,6 +18,11 @@
 		A1000010 /* CursorSessionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000011 /* CursorSessionProvider.swift */; };
 		A1000012 /* CharacterStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000014 /* CharacterStyle.swift */; };
 		A1000013 /* StarWarsCharacterGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000015 /* StarWarsCharacterGenerator.swift */; };
+		A1000014 /* DemonSlayerCharacterGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000016 /* DemonSlayerCharacterGenerator.swift */; };
+		A1000015 /* OnePieceCharacterGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000017 /* OnePieceCharacterGenerator.swift */; };
+		A1000016 /* DragonBallCharacterGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000018 /* DragonBallCharacterGenerator.swift */; };
+		A1000017 /* OfficeCharacterGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000019 /* OfficeCharacterGenerator.swift */; };
+		A1000018 /* MarvelCharacterGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000020 /* MarvelCharacterGenerator.swift */; };
 		B1000001 /* SessionMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000001 /* SessionMonitorTests.swift */; };
 		B1000002 /* CharacterGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002 /* CharacterGeneratorTests.swift */; };
 /* End PBXBuildFile section */
@@ -45,6 +50,11 @@
 		A2000012 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2000014 /* CharacterStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterStyle.swift; sourceTree = "<group>"; };
 		A2000015 /* StarWarsCharacterGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarWarsCharacterGenerator.swift; sourceTree = "<group>"; };
+		A2000016 /* DemonSlayerCharacterGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemonSlayerCharacterGenerator.swift; sourceTree = "<group>"; };
+		A2000017 /* OnePieceCharacterGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnePieceCharacterGenerator.swift; sourceTree = "<group>"; };
+		A2000018 /* DragonBallCharacterGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DragonBallCharacterGenerator.swift; sourceTree = "<group>"; };
+		A2000019 /* OfficeCharacterGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeCharacterGenerator.swift; sourceTree = "<group>"; };
+		A2000020 /* MarvelCharacterGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarvelCharacterGenerator.swift; sourceTree = "<group>"; };
 		A2000013 /* Glimpse.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Glimpse.xcconfig; sourceTree = "<group>"; };
 		A3000001 /* Glimpse.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Glimpse.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B2000001 /* SessionMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitorTests.swift; sourceTree = "<group>"; };
@@ -93,6 +103,11 @@
 				A2000011 /* CursorSessionProvider.swift */,
 				A2000014 /* CharacterStyle.swift */,
 				A2000015 /* StarWarsCharacterGenerator.swift */,
+				A2000016 /* DemonSlayerCharacterGenerator.swift */,
+				A2000017 /* OnePieceCharacterGenerator.swift */,
+				A2000018 /* DragonBallCharacterGenerator.swift */,
+				A2000019 /* OfficeCharacterGenerator.swift */,
+				A2000020 /* MarvelCharacterGenerator.swift */,
 				A2000012 /* Assets.xcassets */,
 			);
 			path = Glimpse;
@@ -210,6 +225,11 @@
 				A1000010 /* CursorSessionProvider.swift in Sources */,
 				A1000012 /* CharacterStyle.swift in Sources */,
 				A1000013 /* StarWarsCharacterGenerator.swift in Sources */,
+				A1000014 /* DemonSlayerCharacterGenerator.swift in Sources */,
+				A1000015 /* OnePieceCharacterGenerator.swift in Sources */,
+				A1000016 /* DragonBallCharacterGenerator.swift in Sources */,
+				A1000017 /* OfficeCharacterGenerator.swift in Sources */,
+				A1000018 /* MarvelCharacterGenerator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

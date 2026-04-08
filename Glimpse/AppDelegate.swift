@@ -130,6 +130,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     bodyColor = CharacterGenerator.traits(for: session.id).bodyColor
                 case .starwars:
                     bodyColor = StarWarsCharacterGenerator.color(for: session.id)
+                case .demonslayer:
+                    bodyColor = DemonSlayerCharacterGenerator.color(for: session.id)
+                case .onepiece:
+                    bodyColor = OnePieceCharacterGenerator.color(for: session.id)
+                case .dragonball:
+                    bodyColor = DragonBallCharacterGenerator.color(for: session.id)
+                case .theoffice:
+                    bodyColor = OfficeCharacterGenerator.color(for: session.id)
+                case .marvel:
+                    bodyColor = MarvelCharacterGenerator.color(for: session.id)
                 }
                 let dot = NSAttributedString(string: "● ", attributes: [.foregroundColor: bodyColor, .font: NSFont.systemFont(ofSize: 14)])
                 let text = NSAttributedString(string: title, attributes: [.font: NSFont.menuFont(ofSize: 0)])

@@ -62,7 +62,7 @@ final class CharacterNode: SKNode {
         bodySprite.position = CGPoint(x: 0, y: spriteY)
 
         // Office-style 3D effect: shadow beneath character + highlight overlay
-        if CharacterStyle.current == .starwars {
+        if CharacterStyle.current != .kawaii {
             shadowNode = Self.makeShadowNode(size: size, spriteY: spriteY)
             highlightNode = Self.makeHighlightNode(size: size, spriteY: spriteY)
         }
@@ -628,7 +628,7 @@ final class CharacterNode: SKNode {
     // MARK: - Lifecycle Animations
 
     private func startBreathing() {
-        if CharacterStyle.current == .starwars {
+        if CharacterStyle.current != .kawaii {
             startOfficeAnimations()
         } else {
             startKawaiiBreathing()
@@ -771,6 +771,16 @@ final class CharacterNode: SKNode {
             cgImage = CharacterGenerator.generate(sessionID: sessionID, size: size)
         case .starwars:
             cgImage = StarWarsCharacterGenerator.generate(sessionID: sessionID, size: size)
+        case .demonslayer:
+            cgImage = DemonSlayerCharacterGenerator.generate(sessionID: sessionID, size: size)
+        case .onepiece:
+            cgImage = OnePieceCharacterGenerator.generate(sessionID: sessionID, size: size)
+        case .dragonball:
+            cgImage = DragonBallCharacterGenerator.generate(sessionID: sessionID, size: size)
+        case .theoffice:
+            cgImage = OfficeCharacterGenerator.generate(sessionID: sessionID, size: size)
+        case .marvel:
+            cgImage = MarvelCharacterGenerator.generate(sessionID: sessionID, size: size)
         }
         let texture: SKTexture
         if let img = cgImage {
@@ -797,7 +807,7 @@ final class CharacterNode: SKNode {
         highlightNode = nil
 
         // Add office 3D nodes if switching to office style
-        if CharacterStyle.current == .starwars {
+        if CharacterStyle.current != .kawaii {
             let cardH = characterSize * 2.6
             let spriteY = cardH * 0.22
             let shadow = Self.makeShadowNode(size: characterSize, spriteY: spriteY)
