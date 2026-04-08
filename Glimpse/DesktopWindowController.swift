@@ -20,7 +20,7 @@ final class DesktopWindowController {
     private var screenObserver: NSObjectProtocol?
     /// Timer that drops frame rate back to baseline after a boost.
     private var fpsDropTimer: Timer?
-    private static let baselineFPS = 3
+    private static let baselineFPS = 5
     private static let boostFPS = 30
     /// How long to hold the boosted frame rate after a change (covers longest transition).
     private static let boostDuration: TimeInterval = 2.0
