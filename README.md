@@ -7,7 +7,7 @@
 [![Built with SpriteKit](https://img.shields.io/badge/built%20with-SpriteKit-orange?logo=swift&logoColor=white)](#build-from-source)
 [![Download](https://img.shields.io/github/v/release/guillim/Glimpse?label=Download&logo=github)](https://github.com/guillim/Glimpse/releases/latest)
 
-![Glimpse demo](https://guillim.github.io/assets/img/glimpse-one.gif)
+![Glimpse demo](https://raw.githubusercontent.com/guillim/Glimpse/refs/heads/main/assets/glimpse-one.gif)
 
 Each running Claude Code or Cursor session gets its own fun character — Star Wars, One Piece, Dragon Ball Z, Marvel, Demon Slayer, The Office, or Kawaii.
 
